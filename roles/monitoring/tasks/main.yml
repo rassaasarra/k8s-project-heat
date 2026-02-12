@@ -1,0 +1,7 @@
+- name: Install Prometheus and Grafana via Manifests
+  become: yes
+  become_user: ubuntu
+  shell: |
+    kubectl create namespace monitoring || true
+    # Simplified: Deploying a combined manifest
+    kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/bundle.yaml

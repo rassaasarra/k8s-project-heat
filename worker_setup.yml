@@ -1,0 +1,4 @@
+- name: Setup K8s Worker
+  hosts: localhost
+  roles:
+    - { role: kubernetes, vars: { k8s_role: 'worker' } }

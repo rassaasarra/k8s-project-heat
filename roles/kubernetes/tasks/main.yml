@@ -1,0 +1,34 @@
+- name: Install Docker and K8s dependencies
+  apt:
+    name: [docker.io, apt-transport-https, curl]
+    state: present
+    update_cache: yes
+
+- name: Add K8s signing key and repo
+  shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+
+- name: Install K8s binaries
+  apt:
+    name: [kubelet, kubeadm, kubectl]
+    state: present
+    update_cache: yes
+
+- name: Initialize Master Node
+  command: kubeadm init --pod-network-cidr=10.244.0.0/16
+  when: k8s_role == 'master'
+  ignore_errors: yes
+
+- name: Setup Kubeconfig for Ubuntu user
+  shell: |
+    mkdir -p /home/ubuntu/.kube
+    cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+    chown ubuntu:ubuntu /home/ubuntu/.kube/config
+  when: k8s_role == 'master'
+
+- name: Install Flannel Network Plugin
+  become: yes
+  become_user: ubuntu
+  command: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+  when: k8s_role == 'master'
