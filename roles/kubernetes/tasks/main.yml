@@ -124,12 +124,28 @@
   become: yes
   when: k8s_role == 'master'
 
+# --- AUTOMATISATION MASTER -> WORKER ---
+- name: Generate join command and save to file
+  shell: kubeadm token create --print-join-command > /tmp/join_command
+  when: k8s_role == 'master'
+  become: yes
+
+- name: Save Master IP to file
+  shell: echo "{{ ansible_default_ipv4.address }}" > /tmp/master_ip
+  when: k8s_role == 'master'
+  become: yes
+
 # --- PARTIE WORKER ---
+- name: Read join command from Master file
+  slurp:
+    src: /tmp/join_command
+  register: slurped_join_command
+  when: k8s_role == 'worker'
+  become: yes
+
 - name: Join Worker to Cluster
-  command: >
-    kubeadm join {{ master_ip }}:6443 
-    --token {{ join_token }} 
-    --discovery-token-ca-cert-hash {{ ca_hash }}
+  shell: >
+    {{ slurped_join_command['content'] | b64decode }}
     --cri-socket unix:///var/run/containerd/containerd.sock
   when: k8s_role == 'worker'
   become: yes
