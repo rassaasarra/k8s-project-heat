@@ -44,7 +44,7 @@
   become: yes
 
 - name: Restart and enable containerd
-  systemctl:
+  service:           # <-- Utilisez 'service' ou 'systemd', pas 'systemctl'
     name: containerd
     state: restarted
     enabled: yes
