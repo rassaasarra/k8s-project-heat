@@ -1,3 +1,4 @@
+---
 - name: Setup K8s Worker
   hosts: localhost
   become: yes
@@ -8,9 +9,15 @@
       vars:
         k8s_role: 'worker'
 
+    # --- ÉTAPE DE SÉCURITÉ : Nettoyage automatique si la jointure est nécessaire ---
+    - name: Clean previous failed join attempts
+      command: kubeadm reset -f
+      when: join_command is defined
+      args:
+        creates: /etc/kubernetes/kubelet.conf # Ne nettoie PAS si le worker est déjà opérationnel
+
     - name: Join Worker to Cluster
       shell: "{{ join_command }}"
-      # Vérifie si le nœud est déjà joint pour être idempotent
       args:
         creates: /etc/kubernetes/kubelet.conf
       when: join_command is defined
