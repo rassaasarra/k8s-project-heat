@@ -13,18 +13,18 @@
 
 - name: Remove conflicting container packages
   apt:
-    name: [containerd, containerd.io, runc]
+    name: [docker.io, docker-doc, docker-compose, podman, containerd]
     state: absent
   become: yes
 
-- name: Install Docker and K8s dependencies
+# --- FIX CRI: Installation de containerd au lieu de Docker ---
+- name: Install containerd
   apt:
-    name: [docker.io, apt-transport-https, curl]
+    name: [containerd.io, apt-transport-https, curl]
     state: present
     update_cache: yes
   become: yes
 
-# --- FIX CRI: Configuration automatique de containerd ---
 - name: Ensure containerd config directory exists
   file:
     path: /etc/containerd
@@ -44,7 +44,7 @@
   become: yes
 
 - name: Restart and enable containerd
-  service:           # <-- Utilisez 'service' ou 'systemd', pas 'systemctl'
+  service:
     name: containerd
     state: restarted
     enabled: yes
@@ -81,8 +81,21 @@
 
 # --- PARTIE MASTER ---
 - name: Initialize Master Node
-  command: kubeadm init --pod-network-cidr=10.244.0.0/16
+  command: >
+    kubeadm init --pod-network-cidr=10.244.0.0/16 
+    --cri-socket unix:///var/run/containerd/containerd.sock
   when: k8s_role == 'master'
   args:
     creates: /etc/kubernetes/admin.conf
   become: yes
+
+# --- FIX Flannel: Remédiation automatique du réseau ---
+- name: Check Flannel pod status and restart if failing
+  shell: |
+    kubectl get pods -n kube-flannel -l app=flannel -o json | \
+    jq -r '.items[] | select(.status.phase != "Running") | .metadata.name' | \
+    xargs -r kubectl delete pod -n kube-flannel
+  register: flannel_check
+  changed_when: flannel_check.stdout != ""
+  become: yes
+  when: k8s_role == 'master'
