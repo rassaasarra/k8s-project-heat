@@ -1,24 +1,35 @@
+---
 - name: Install Docker and K8s dependencies
   apt:
     name: [docker.io, apt-transport-https, curl]
     state: present
     update_cache: yes
+  become: yes
 
 - name: Add K8s signing key and repo
   shell: |
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    # Ajout de --yes pour éviter le blocage interactif si le fichier existe
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+  args:
+    # Empêche de relancer la tâche si le fichier existe déjà
+    creates: /etc/apt/sources.list.d/kubernetes.list
+  become: yes
 
 - name: Install K8s binaries
   apt:
     name: [kubelet, kubeadm, kubectl]
     state: present
     update_cache: yes
+  become: yes
 
 - name: Initialize Master Node
   command: kubeadm init --pod-network-cidr=10.244.0.0/16
   when: k8s_role == 'master'
-  ignore_errors: yes
+  args:
+    # Empêche de relancer l'init si le cluster est déjà initialisé
+    creates: /etc/kubernetes/admin.conf
+  become: yes
 
 - name: Setup Kubeconfig for Ubuntu user
   shell: |
@@ -26,6 +37,7 @@
     cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
     chown ubuntu:ubuntu /home/ubuntu/.kube/config
   when: k8s_role == 'master'
+  become: yes
 
 - name: Install Flannel Network Plugin
   become: yes
