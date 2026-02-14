@@ -17,7 +17,7 @@
   become: yes
 
 # --- CONFIGURATION CONTAINERD ---
-- name: Install containerd.io
+- name: Install containerd
   apt:
     name: [containerd.io, apt-transport-https, curl, jq]
     state: present
@@ -48,8 +48,8 @@
     state: restarted
     enabled: yes
   become: yes
+# -------------------------------------------------------
 
-# --- INSTALLATION KUBERNETES ---
 - name: Add K8s signing key
   shell: |
     curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
@@ -81,7 +81,7 @@
     state: present
   become: yes
 
-# --- LOGIQUE MASTER ---
+# --- PARTIE MASTER ---
 - name: Initialize Master Node
   command: >
     kubeadm init --pod-network-cidr=10.244.0.0/16 
@@ -113,7 +113,8 @@
   become: yes
   ignore_errors: yes
 
-- name: FIX Flannel - Auto-restart if CrashLoop
+# --- FIX Flannel: Remédiation automatique du réseau ---
+- name: Check Flannel pod status and restart if failing
   shell: |
     KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -n kube-flannel -l app=flannel -o json | \
     jq -r '.items[] | select(.status.phase != "Running") | .metadata.name' | \
@@ -123,13 +124,12 @@
   become: yes
   when: k8s_role == 'master'
 
-# --- LOGIQUE WORKER ---
-# Note: Assure-toi d'avoir créé le fichier /tmp/master_join_command sur le worker 
-# ou d'utiliser un token fixe comme tu le souhaitais.
+# --- PARTIE WORKER ---
 - name: Join Worker to Cluster
-  shell: |
-    kubeadm join {{ master_ip }}:6443 --token {{ join_token }} \
-    --discovery-token-ca-cert-hash sha256:{{ ca_hash }} \
+  command: >
+    kubeadm join {{ master_ip }}:6443 
+    --token {{ join_token }} 
+    --discovery-token-ca-cert-hash {{ ca_hash }}
     --cri-socket unix:///var/run/containerd/containerd.sock
   when: k8s_role == 'worker'
   become: yes
