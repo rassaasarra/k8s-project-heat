@@ -1,4 +1,16 @@
 - name: Setup K8s Worker
   hosts: localhost
-  roles:
-    - { role: kubernetes, vars: { k8s_role: 'worker' } }
+  become: yes
+  tasks:
+    - name: Include Kubernetes Role
+      include_role:
+        name: kubernetes
+      vars:
+        k8s_role: 'worker'
+
+    - name: Join Worker to Cluster
+      shell: "{{ join_command }}"
+      # Vérifie si le nœud est déjà joint pour être idempotent
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+      when: join_command is defined
