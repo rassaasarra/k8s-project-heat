@@ -1,18 +1,4 @@
 ---
-# --- AJOUTER CETTE TÂCHE AVANT L'INSTALLATION ---
-- name: Remove conflicting container packages
-  apt:
-    name: [containerd, containerd.io, runc]
-    state: absent
-  become: yes
-
-- name: Install Docker and K8s dependencies
-  apt:
-    name: [docker.io, apt-transport-https, curl]
-    state: present
-    update_cache: yes
-  become: yes
-  
 - name: Disable SWAP (Kubernetes requirement)
   shell: |
     swapoff -a
@@ -25,12 +11,45 @@
     replace: '# \1'
   become: yes
 
+- name: Remove conflicting container packages
+  apt:
+    name: [containerd, containerd.io, runc]
+    state: absent
+  become: yes
+
 - name: Install Docker and K8s dependencies
   apt:
     name: [docker.io, apt-transport-https, curl]
     state: present
     update_cache: yes
   become: yes
+
+# --- FIX CRI: Configuration automatique de containerd ---
+- name: Ensure containerd config directory exists
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Generate default containerd config
+  shell: containerd config default > /etc/containerd/config.toml
+  become: yes
+
+- name: Set SystemdCgroup to true in containerd config
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  become: yes
+
+- name: Restart and enable containerd
+  systemctl:
+    name: containerd
+    state: restarted
+    enabled: yes
+  become: yes
+# -------------------------------------------------------
 
 - name: Add K8s signing key and repo
   shell: |
@@ -47,7 +66,6 @@
     update_cache: yes
   become: yes
 
-# --- PRÉREQUIS RÉSEAU ---
 - name: Load br_netfilter module
   modprobe:
     name: br_netfilter
@@ -68,25 +86,3 @@
   args:
     creates: /etc/kubernetes/admin.conf
   become: yes
-
-- name: Setup Kubeconfig for current user
-  shell: |
-    USER_HOME=$(getent passwd {{ ansible_user_id }} | cut -d: -f6)
-    mkdir -p "$USER_HOME/.kube"
-    cp -f /etc/kubernetes/admin.conf "$USER_HOME/.kube/config"
-    chown {{ ansible_user_id }}:{{ ansible_user_id }} "$USER_HOME/.kube/config"
-  when: k8s_role == 'master'
-  become: yes
-
-- name: Wait for Kubernetes API to be ready
-  wait_for:
-    port: 6443
-    delay: 15
-    timeout: 60
-  when: k8s_role == 'master'
-
-- name: Install Flannel Network Plugin
-  become: yes
-  become_user: "{{ ansible_user_id }}"
-  command: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
-  when: k8s_role == 'master'
