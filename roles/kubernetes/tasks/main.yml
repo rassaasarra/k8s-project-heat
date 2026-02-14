@@ -92,7 +92,6 @@
     creates: /etc/kubernetes/admin.conf
   become: yes
 
-# --- LA PLACE CORRECTE EST ICI ---
 - name: Wait for K8s API server to be ready
   wait_for:
     host: "{{ ansible_default_ipv4.address }}"
@@ -122,40 +121,17 @@
   become: yes
   ignore_errors: yes
 
-- name: Check Flannel pod status and restart if failing
-  shell: |
-    kubectl get pods -n kube-flannel -l app=flannel -o json | \
-    jq -r '.items[] | select(.status.phase != "Running") | .metadata.name' | \
-    xargs -r kubectl delete pod -n kube-flannel
-  register: flannel_check
-  changed_when: flannel_check.stdout != ""
-  become: yes
-  when: k8s_role == 'master'
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-    
-- name: Generate join command and save to file
-  shell: kubeadm token create --print-join-command > /tmp/join_command
-  when: k8s_role == 'master'
-  become: yes
-
-- name: Save Master IP to file
-  shell: echo "{{ ansible_default_ipv4.address }}" > /tmp/master_ip
+- name: Generate join command (sanitized)
+  shell: kubeadm token create --print-join-command | tr -d '\n' > /tmp/join_command
   when: k8s_role == 'master'
   become: yes
 
 # --- PARTIE WORKER ---
-- name: Read join command from Master file
-  slurp:
-    src: /tmp/join_command
-  register: slurped_join_command
-  when: k8s_role == 'worker'
-  become: yes
-
 - name: Join Worker to Cluster
-  shell: >
-    {{ slurped_join_command['content'] | b64decode }}
-    --cri-socket unix:///var/run/containerd/containerd.sock
+  shell: |
+    {% if k8s_role == 'worker' %}
+    {{ join_command }} --cri-socket unix:///var/run/containerd/containerd.sock
+    {% endif %}
   when: k8s_role == 'worker'
   become: yes
   args:
