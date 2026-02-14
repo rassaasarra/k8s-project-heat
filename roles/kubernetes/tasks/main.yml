@@ -124,14 +124,16 @@
 
 - name: Check Flannel pod status and restart if failing
   shell: |
-    KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -n kube-flannel -l app=flannel -o json | \
+    kubectl get pods -n kube-flannel -l app=flannel -o json | \
     jq -r '.items[] | select(.status.phase != "Running") | .metadata.name' | \
-    xargs -r KUBECONFIG=/etc/kubernetes/admin.conf kubectl delete pod -n kube-flannel
+    xargs -r kubectl delete pod -n kube-flannel
   register: flannel_check
   changed_when: flannel_check.stdout != ""
   become: yes
   when: k8s_role == 'master'
-
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    
 - name: Generate join command and save to file
   shell: kubeadm token create --print-join-command > /tmp/join_command
   when: k8s_role == 'master'
