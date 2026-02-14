@@ -1,5 +1,6 @@
 - name: Setup K8s Master
   hosts: localhost
+  become: yes
   roles:
-    - { role: kubernetes, vars: { k8s_role: 'master' } }
-    - role: monitoring
+    - { role: roles/kubernetes, vars: { k8s_role: 'master' } }
+    - role: roles/monitoring
