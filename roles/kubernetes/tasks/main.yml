@@ -1,4 +1,15 @@
 ---
+- name: Disable SWAP (Kubernetes requirement)
+  shell: |
+    swapoff -a
+  become: yes
+
+- name: Disable SWAP in /etc/fstab (permanent)
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+.*)$'
+    replace: '# \1'
+  become: yes
 - name: Install Docker and K8s dependencies
   apt:
     name: [docker.io, apt-transport-https, curl]
