@@ -21,7 +21,21 @@
     update_cache: yes
   become: yes
 
-# --- Partie Master ---
+# --- PRÉREQUIS RÉSEAU (Doivent être AVANT kubeadm init) ---
+- name: Load br_netfilter module
+  modprobe:
+    name: br_netfilter
+    state: present
+  become: yes
+
+- name: Enable bridge-nf-call-iptables
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: '1'
+    state: present
+  become: yes
+
+# --- PARTIE MASTER ---
 - name: Initialize Master Node
   command: kubeadm init --pod-network-cidr=10.244.0.0/16
   when: k8s_role == 'master'
@@ -42,16 +56,3 @@
   become_user: ubuntu
   command: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
   when: k8s_role == 'master'
-
-  - name: Load br_netfilter module
-  modprobe:
-    name: br_netfilter
-    state: present
-  become: yes
-
-- name: Enable bridge-nf-call-iptables
-  sysctl:
-    name: net.bridge.bridge-nf-call-iptables
-    value: '1'
-    state: present
-  become: yes
