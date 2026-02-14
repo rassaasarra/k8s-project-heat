@@ -1,4 +1,18 @@
 ---
+# --- AJOUTER CETTE TÂCHE AVANT L'INSTALLATION ---
+- name: Remove conflicting container packages
+  apt:
+    name: [containerd, containerd.io, runc]
+    state: absent
+  become: yes
+
+- name: Install Docker and K8s dependencies
+  apt:
+    name: [docker.io, apt-transport-https, curl]
+    state: present
+    update_cache: yes
+  become: yes
+  
 - name: Disable SWAP (Kubernetes requirement)
   shell: |
     swapoff -a
