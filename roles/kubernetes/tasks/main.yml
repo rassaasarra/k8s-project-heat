@@ -57,15 +57,15 @@
 
 - name: Setup Kubeconfig for current user
   shell: |
-    # Utilisation de $USER pour s'adapter à la machine
-    mkdir -p /home/$USER/.kube
-    cp -i /etc/kubernetes/admin.conf /home/$USER/.kube/config
-    chown $USER:$USER /home/$USER/.kube/config
+    USER_HOME=$(getent passwd {{ ansible_user_id }} | cut -d: -f6)
+    mkdir -p "$USER_HOME/.kube"
+    cp -f /etc/kubernetes/admin.conf "$USER_HOME/.kube/config"
+    chown {{ ansible_user_id }}:{{ ansible_user_id }} "$USER_HOME/.kube/config"
   when: k8s_role == 'master'
   become: yes
 
 - name: Install Flannel Network Plugin
   become: yes
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ ansible_user_id }}"
   command: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
   when: k8s_role == 'master'
