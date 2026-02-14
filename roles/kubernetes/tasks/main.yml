@@ -10,6 +10,7 @@
     regexp: '^([^#].*?\sswap\s+.*)$'
     replace: '# \1'
   become: yes
+
 - name: Install Docker and K8s dependencies
   apt:
     name: [docker.io, apt-transport-https, curl]
@@ -54,16 +55,17 @@
     creates: /etc/kubernetes/admin.conf
   become: yes
 
-- name: Setup Kubeconfig for Ubuntu user
+- name: Setup Kubeconfig for current user
   shell: |
-    mkdir -p /home/ubuntu/.kube
-    cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-    chown ubuntu:ubuntu /home/ubuntu/.kube/config
+    # Utilisation de $USER pour s'adapter à la machine
+    mkdir -p /home/$USER/.kube
+    cp -i /etc/kubernetes/admin.conf /home/$USER/.kube/config
+    chown $USER:$USER /home/$USER/.kube/config
   when: k8s_role == 'master'
   become: yes
 
 - name: Install Flannel Network Plugin
   become: yes
-  become_user: ubuntu
+  become_user: "{{ ansible_user }}"
   command: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
   when: k8s_role == 'master'
