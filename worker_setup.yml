@@ -1,26 +1,26 @@
 ---
-- name: Setup K8s Worker
+- name: Setup Kubernetes Worker
   hosts: localhost
   become: yes
+
+  vars:
+    k8s_role: "worker"
+
   tasks:
+
     - name: Include Kubernetes Role
       include_role:
         name: kubernetes
-      vars:
-        k8s_role: 'worker'
 
-    # Nettoyage si le fichier kubelet.conf n'existe pas encore (signe que le join n'est pas fait)
-    - name: Clean previous failed join attempts
+    - name: Reset previous failed join
       command: kubeadm reset -f
-      when: join_command is defined
-      args:
-        creates: /etc/kubernetes/kubelet.conf
+      when: global_join_command is defined
+      ignore_errors: yes
 
-    # Jointure avec spécification explicite du socket containerd pour éviter l'erreur "unknown flag"
-    - name: Join Worker to Cluster
-      shell: "{{ join_command }} --cri-socket unix:///var/run/containerd/containerd.sock"
+    - name: Join worker to cluster
+      command: >
+        {{ hostvars['localhost'].global_join_command }}
+        --cri-socket unix:///run/containerd/containerd.sock
       args:
         creates: /etc/kubernetes/kubelet.conf
-      when: 
-        - join_command is defined
-        - join_command != ""
+      when: hostvars['localhost'].global_join_command is defined
