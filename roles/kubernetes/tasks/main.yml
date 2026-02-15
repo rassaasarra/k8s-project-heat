@@ -1,5 +1,24 @@
 ---
 # ==============================
+# FIX APT LOCK (unattended-upgrades)
+# ==============================
+
+- name: Stop unattended-upgrades service
+  service:
+    name: unattended-upgrades
+    state: stopped
+    enabled: no
+  become: yes
+  ignore_errors: yes
+
+- name: Disable apt daily timers
+  shell: |
+    systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
+  become: yes
+  args:
+    executable: /bin/bash
+
+# ==============================
 # PRÉREQUIS SYSTÈME
 # ==============================
 
@@ -79,7 +98,6 @@
     enabled: yes
   become: yes
 
-# Vérifier que containerd fonctionne
 - name: Check containerd socket exists
   stat:
     path: /run/containerd/containerd.sock
