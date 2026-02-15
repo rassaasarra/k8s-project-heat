@@ -110,12 +110,7 @@
   when: not containerd_sock.stat.exists
   become: yes
 
-- name: Restart kubelet
-  service:
-    name: kubelet
-    state: restarted
-    enabled: yes
-  become: yes
+
 
 # ==============================
 # INSTALLATION KUBERNETES
@@ -145,6 +140,13 @@
 
 - name: Hold Kubernetes packages
   command: apt-mark hold kubelet kubeadm kubectl
+  become: yes
+
+ - name: Restart kubelet
+  service:
+    name: kubelet
+    state: restarted
+    enabled: yes
   become: yes
 
 # ==============================
