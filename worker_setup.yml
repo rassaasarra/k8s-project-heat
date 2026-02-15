@@ -12,7 +12,6 @@
       include_role:
         name: kubernetes
 
-    # Le kubelet peut boucler en erreur tant que join pas fait -> on le stop pour être propre
     - name: Stop kubelet before join
       service:
         name: kubelet
@@ -33,8 +32,10 @@
       command: kubeadm reset -f
       ignore_errors: yes
 
-    - name: Join worker to cluster using join file
-      command: "bash {{ join_file }}"
+    - name: Join worker to cluster using join file (log to /var/log/kubeadm-join.log)
+      shell: |
+        set -e
+        bash {{ join_file }} --cri-socket unix:///run/containerd/containerd.sock | tee /var/log/kubeadm-join.log
       args:
         creates: /etc/kubernetes/kubelet.conf
 
