@@ -61,7 +61,7 @@
         url: https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.10/cri-dockerd_0.3.10.3-0.ubuntu-jammy_amd64.deb
         dest: /tmp/cri-dockerd.deb
 
-    - name: Installer le paquet deb via dpkg (pour supporter zstd)
+    - name: Installer le paquet deb via dpkg
       shell: dpkg -i /tmp/cri-dockerd.deb || apt-get install -f -y
       become: yes
 
@@ -71,7 +71,7 @@
         state: restarted
         enabled: yes
         daemon_reload: yes
-      loop: [docker, cri-docker]
+      loop: [docker, cri-dockerd]
   become: yes
 
 # 4. Installation de Kubernetes (v1.28)
