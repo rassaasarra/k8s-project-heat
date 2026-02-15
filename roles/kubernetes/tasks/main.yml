@@ -14,6 +14,7 @@
     replace: '# \1'
   become: yes
 
+# CORRECTION : On charge le module AVANT de configurer le sysctl
 - name: Load br_netfilter module
   modprobe:
     name: br_netfilter
@@ -113,10 +114,10 @@
 # MASTER
 # ==============================
 
-- name: Initialize Master (CIDR Calico)
+- name: Initialize Master
   command: >
     kubeadm init
-    --pod-network-cidr=192.168.0.0/16
+    --pod-network-cidr=10.244.0.0/16
     --cri-socket unix:///run/containerd/containerd.sock
     --apiserver-advertise-address={{ ansible_default_ipv4.address }}
   args:
@@ -140,6 +141,7 @@
         dest: /root/.kube/config
         remote_src: yes
 
+    # CORRECTION : Configuration automatique pour l'utilisateur seif
     - name: Create .kube directory for seif
       file:
         path: /home/seif/.kube
@@ -157,15 +159,28 @@
         group: seif
         mode: '0600'
 
-- name: Install Calico Operator
-  command: kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# ==============================
+# INSTALL CALICO (remplace Flannel)
+# ==============================
+
+- name: Download Calico manifest
+  get_url:
+    url: https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/calico.yaml
+    dest: /tmp/calico.yaml
+    mode: '0644'
   when: k8s_role == "master"
   become: yes
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
 
-- name: Install Calico Custom Resources
-  command: kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
+- name: Set Calico pod CIDR to 10.244.0.0/16
+  replace:
+    path: /tmp/calico.yaml
+    regexp: '192\.168\.0\.0/16'
+    replace: '10.244.0.0/16'
+  when: k8s_role == "master"
+  become: yes
+
+- name: Apply Calico
+  command: kubectl apply -f /tmp/calico.yaml
   when: k8s_role == "master"
   become: yes
   environment:
@@ -177,13 +192,7 @@
   when: k8s_role == "master"
   become: yes
 
-# ==============================
-# WORKER
-# ==============================
-
-- name: Join Worker to Cluster
-  shell: "{{ join_command }}"
-  when: k8s_role == "worker"
-  become: yes
-  args:
-    creates: /etc/kubernetes/kubelet.conf
+- name: Save join command globally
+  set_fact:
+    global_join_command: "{{ join_cmd.stdout }}"
+  when: k8s_role == "master"
