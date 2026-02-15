@@ -180,8 +180,16 @@
         mode: '0600'
 
 # ==============================
-# REMOVE FLANNEL (if exists)
+# REMOVE FLANNEL (if exists) - NON BLOQUANT
 # ==============================
+
+- name: Remove Flannel if already installed
+  command: kubectl delete -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml --ignore-not-found=true --wait=false
+  when: k8s_role == "master"
+  become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  ignore_errors: yes
 
 # ==============================
 # INSTALL CALICO
@@ -211,7 +219,7 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
 
 # ==============================
-# GENERATE JOIN COMMAND
+# GENERATE JOIN COMMAND + EXPOSE VIA HTTP
 # ==============================
 
 - name: Generate join command
@@ -220,7 +228,27 @@
   when: k8s_role == "master"
   become: yes
 
-- name: Save join command globally
-  set_fact:
-    global_join_command: "{{ join_cmd.stdout }}"
+- name: Save join command to file (with containerd socket)
+  copy:
+    dest: /srv/join.sh
+    content: |
+      {{ join_cmd.stdout }} --cri-socket unix:///run/containerd/containerd.sock
+    mode: '0644'
   when: k8s_role == "master"
+  become: yes
+
+- name: Ensure python3 is installed for HTTP server
+  apt:
+    name: python3
+    state: present
+    update_cache: yes
+  when: k8s_role == "master"
+  become: yes
+
+- name: Start simple HTTP server to serve join.sh
+  shell: |
+    nohup python3 -m http.server 8000 --directory /srv >/var/log/join-http.log 2>&1 &
+  args:
+    creates: /var/log/join-http.log
+  when: k8s_role == "master"
+  become: yes
