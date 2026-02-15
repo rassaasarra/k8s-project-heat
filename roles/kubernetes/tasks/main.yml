@@ -1,138 +1,139 @@
 ---
-- name: Disable SWAP (Kubernetes requirement)
-  shell: swapoff -a
+# 1. Protection contre les verrous APT & Réparations
+# -------------------------------------------------------------------------
+- name: Attendre que le verrou APT soit libéré
+  shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done;
+  changed_when: false
+
+- name: Réparer les installations de paquets interrompues
+  shell: |
+    dpkg --configure -a
+    apt-get install -f -y
+  ignore_errors: yes
   become: yes
 
-- name: Disable SWAP in /etc/fstab (permanent)
-  replace:
-    path: /etc/fstab
-    regexp: '^([^#].*?\sswap\s+.*)$'
-    replace: '# \1'
+# 2. Préparation du Système (Swap, Modules, Réseau)
+# -------------------------------------------------------------------------
+- name: Désactiver le Swap
+  shell: |
+    swapoff -a
+    sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
   become: yes
 
-- name: Remove conflicting container packages
+- name: Charger les modules noyau
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: [overlay, br_netfilter]
+  become: yes
+
+- name: Configurer le sysctl pour le réseau
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+  become: yes
+
+# 3. Installation Docker & CRI-Dockerd
+# -------------------------------------------------------------------------
+- name: Installer Docker et dépendances
   apt:
-    name: [docker.io, docker-doc, docker-compose, podman, containerd]
-    state: absent
-  become: yes
-
-# --- CONFIGURATION CONTAINERD ---
-- name: Install containerd
-  apt:
-    name: [containerd.io, apt-transport-https, curl, jq]
+    name: [docker.io, apt-transport-https, curl, jq, gnupg]
     state: present
     update_cache: yes
   become: yes
 
-- name: Ensure containerd config directory exists
+- name: Configurer le répertoire des clés
   file:
-    path: /etc/containerd
+    path: /etc/apt/keyrings
     state: directory
     mode: '0755'
   become: yes
 
-- name: Generate default containerd config
-  shell: containerd config default > /etc/containerd/config.toml
+- name: Installer cri-dockerd (Jammy/Ubuntu)
+  block:
+    - name: Télécharger cri-dockerd
+      get_url:
+        url: https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.10/cri-dockerd_0.3.10.3-0.ubuntu-jammy_amd64.deb
+        dest: /tmp/cri-dockerd.deb
+    - name: Installer le paquet deb
+      apt:
+        deb: /tmp/cri-dockerd.deb
+        state: present
+    - name: Activer les services
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+      loop: [docker, cri-docker]
   become: yes
 
-- name: Set SystemdCgroup to true in containerd config
-  replace:
-    path: /etc/containerd/config.toml
-    regexp: 'SystemdCgroup = false'
-    replace: 'SystemdCgroup = true'
-  become: yes
-
-- name: Restart and enable containerd
-  service:
-    name: containerd
-    state: restarted
-    enabled: yes
-  become: yes
-
-# --- INSTALLATION K8S ---
-- name: Add K8s signing key
+# 4. Installation de Kubernetes (v1.28)
+# -------------------------------------------------------------------------
+- name: Configurer le dépôt K8s
   shell: |
     curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
   become: yes
 
-- name: Add K8s repository
-  copy:
-    dest: /etc/apt/sources.list.d/kubernetes.list
-    content: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /'
-  become: yes
-
-- name: Install K8s binaries
+- name: Installer kubelet, kubeadm, kubectl
   apt:
     name: [kubelet, kubeadm, kubectl]
     state: present
     update_cache: yes
   become: yes
 
-- name: Load br_netfilter module
-  modprobe:
-    name: br_netfilter
-    state: present
-  become: yes
-
-- name: Enable bridge-nf-call-iptables
-  sysctl:
-    name: net.bridge.bridge-nf-call-iptables
-    value: '1'
-    state: present
-  become: yes
-
-# --- PARTIE MASTER ---
-- name: Initialize Master Node
+# 5. Initialisation du MASTER
+# -------------------------------------------------------------------------
+- name: Initialiser le Master Kubernetes
   command: >
-    kubeadm init --pod-network-cidr=10.244.0.0/16 
-    --cri-socket unix:///var/run/containerd/containerd.sock
-    --apiserver-advertise-address=10.0.0.34
-  when: k8s_role == 'master'
+    kubeadm init 
+    --pod-network-cidr=192.168.0.0/16 
+    --apiserver-advertise-address={{ ansible_default_ipv4.address }}
+    --apiserver-cert-extra-sans={{ ansible_default_ipv4.address }}
+    --cri-socket unix:///var/run/cri-dockerd.sock
+    --ignore-preflight-errors=all
   args:
     creates: /etc/kubernetes/admin.conf
-  become: yes
-
-- name: Wait for K8s API server to be ready
-  wait_for:
-    host: "{{ ansible_default_ipv4.address }}"
-    port: 6443
-    delay: 10
-    timeout: 300
-  when: k8s_role == 'master'
-
-- name: Setup kubeconfig for root
-  file:
-    path: /root/.kube
-    state: directory
   when: k8s_role == 'master'
   become: yes
 
-- name: Copy admin.conf to root kubeconfig
-  copy:
-    src: /etc/kubernetes/admin.conf
-    dest: /root/.kube/config
-    remote_src: yes
+- name: Setup kubeconfig pour root
+  block:
+    - file: path=/root/.kube state=directory
+    - copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
   when: k8s_role == 'master'
   become: yes
 
-- name: Install Flannel CNI
-  command: kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+- name: Installer Calico (Réseau)
+  shell: |
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+    sleep 5
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
   when: k8s_role == 'master'
   become: yes
   ignore_errors: yes
 
-- name: Generate join command (sanitized)
-  shell: kubeadm token create --print-join-command | tr -d '\n' > /tmp/join_command
-  when: k8s_role == 'master'
+# 6. Logique WORKER
+# -------------------------------------------------------------------------
+- name: Nettoyer avant jointure
+  command: kubeadm reset -f
+  when: k8s_role == 'worker' and join_command is defined
   become: yes
+  args:
+    creates: /etc/kubernetes/kubelet.conf
 
-# --- PARTIE WORKER ---
-- name: Join Worker to Cluster
-  shell: |
-    {% if k8s_role == 'worker' %}
-    {{ join_command }} --cri-socket unix:///var/run/containerd/containerd.sock
-    {% endif %}
-  when: k8s_role == 'worker'
+- name: Joindre le Worker au Cluster
+  shell: "{{ join_command }} --cri-socket unix:///var/run/cri-dockerd.sock"
+  when: k8s_role == 'worker' and join_command is defined
   become: yes
   args:
     creates: /etc/kubernetes/kubelet.conf
