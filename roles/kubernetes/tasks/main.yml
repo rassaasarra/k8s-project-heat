@@ -80,6 +80,27 @@
     enabled: yes
   become: yes
 
+# ✅ AJOUT (1) : vérifier que le socket containerd existe (master+workers)
+- name: Check containerd socket exists
+  stat:
+    path: /run/containerd/containerd.sock
+  register: containerd_sock
+  become: yes
+
+- name: Fail if containerd socket is missing
+  fail:
+    msg: "containerd socket missing: /run/containerd/containerd.sock (containerd not running)"
+  when: not containerd_sock.stat.exists
+  become: yes
+
+# ✅ AJOUT (2) : redémarrer kubelet après containerd (master+workers)
+- name: Restart kubelet after containerd
+  service:
+    name: kubelet
+    state: restarted
+    enabled: yes
+  become: yes
+
 # ==============================
 # INSTALLATION KUBERNETES
 # ==============================
@@ -156,12 +177,20 @@
         dest: /home/seif/.kube/config
         remote_src: yes
         owner: seif
-        group: seif
+       group: seif
         mode: '0600'
 
 # ==============================
 # INSTALL CALICO (remplace Flannel)
 # ==============================
+
+# ✅ AJOUT (3) : supprimer Flannel si déjà installé (sinon conflit Flannel/Calico)
+- name: Remove Flannel if already installed
+  command: kubectl delete -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml --ignore-not-found=true
+  when: k8s_role == "master"
+  become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
 
 - name: Download Calico manifest
   get_url:
