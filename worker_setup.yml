@@ -5,24 +5,33 @@
 
   vars:
     k8s_role: "worker"
-    master_ip: "10.0.0.34"
 
   tasks:
     - name: Include Kubernetes Role
       include_role:
         name: kubernetes
 
-    - name: Download join command from master
-      get_url:
-        url: "http://{{ master_ip }}:8000/join.sh"
-        dest: /tmp/join.sh
-        mode: '0700'
+    # Important: tant que le join n'est pas fait, kubelet peut crash (normal)
+    - name: Stop kubelet before join (avoid restart loop noise)
+      service:
+        name: kubelet
+        state: stopped
+      ignore_errors: yes
 
     - name: Reset previous cluster state
       command: kubeadm reset -f
       ignore_errors: yes
+      when: join_command is defined
 
     - name: Join worker to cluster
-      command: /tmp/join.sh
+      command: "{{ join_command }} --cri-socket unix:///run/containerd/containerd.sock"
       args:
         creates: /etc/kubernetes/kubelet.conf
+      when: join_command is defined
+
+    - name: Start kubelet after join
+      service:
+        name: kubelet
+        state: started
+        enabled: yes
+      when: join_command is defined
