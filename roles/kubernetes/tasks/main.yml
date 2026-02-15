@@ -14,7 +14,6 @@
     replace: '# \1'
   become: yes
 
-# CORRECTION : On charge le module AVANT de configurer le sysctl
 - name: Load br_netfilter module
   modprobe:
     name: br_netfilter
@@ -80,21 +79,20 @@
     enabled: yes
   become: yes
 
-# ✅ AJOUT (1) : vérifier que le socket containerd existe (master+workers)
+# Vérifier que containerd fonctionne
 - name: Check containerd socket exists
   stat:
     path: /run/containerd/containerd.sock
   register: containerd_sock
   become: yes
 
-- name: Fail if containerd socket is missing
+- name: Fail if containerd socket missing
   fail:
-    msg: "containerd socket missing: /run/containerd/containerd.sock (containerd not running)"
+    msg: "containerd socket missing: containerd not running"
   when: not containerd_sock.stat.exists
   become: yes
 
-# ✅ AJOUT (2) : redémarrer kubelet après containerd (master+workers)
-- name: Restart kubelet after containerd
+- name: Restart kubelet
   service:
     name: kubelet
     state: restarted
@@ -132,7 +130,7 @@
   become: yes
 
 # ==============================
-# MASTER
+# MASTER SETUP
 # ==============================
 
 - name: Initialize Master
@@ -146,7 +144,7 @@
   when: k8s_role == "master"
   become: yes
 
-- name: Setup kubeconfig for root AND seif
+- name: Setup kubeconfig for root
   when: k8s_role == "master"
   become: yes
   block:
@@ -161,36 +159,22 @@
         src: /etc/kubernetes/admin.conf
         dest: /root/.kube/config
         remote_src: yes
-
-    # CORRECTION : Configuration automatique pour l'utilisateur seif
-    - name: Create .kube directory for seif
-      file:
-        path: /home/seif/.kube
-        state: directory
-        owner: seif
-        group: seif
-        mode: '0700'
-
-    - name: Copy admin.conf to seif
-      copy:
-        src: /etc/kubernetes/admin.conf
-        dest: /home/seif/.kube/config
-        remote_src: yes
-        owner: seif
-       group: seif
         mode: '0600'
 
 # ==============================
-# INSTALL CALICO (remplace Flannel)
+# REMOVE FLANNEL (if exists)
 # ==============================
 
-# ✅ AJOUT (3) : supprimer Flannel si déjà installé (sinon conflit Flannel/Calico)
 - name: Remove Flannel if already installed
   command: kubectl delete -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml --ignore-not-found=true
   when: k8s_role == "master"
   become: yes
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
+
+# ==============================
+# INSTALL CALICO
+# ==============================
 
 - name: Download Calico manifest
   get_url:
@@ -214,6 +198,10 @@
   become: yes
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
+
+# ==============================
+# GENERATE JOIN COMMAND
+# ==============================
 
 - name: Generate join command
   command: kubeadm token create --print-join-command
