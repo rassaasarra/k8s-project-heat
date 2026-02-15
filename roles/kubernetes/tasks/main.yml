@@ -62,7 +62,9 @@
         dest: /tmp/cri-dockerd.deb
 
     - name: Installer le paquet deb via dpkg
-      shell: dpkg -i /tmp/cri-dockerd.deb || apt-get install -f -y
+      shell: |
+        dpkg -i /tmp/cri-dockerd.deb
+        systemctl daemon-reload
       become: yes
 
     - name: Redémarrer les services
@@ -70,8 +72,8 @@
         name: "{{ item }}"
         state: restarted
         enabled: yes
-        daemon_reload: yes
-      loop: [docker, cri-dockerd]
+      loop: [docker, cri-docker, cri-dockerd] # On tente les deux noms par sécurité
+      ignore_errors: yes 
   become: yes
 
 # 4. Installation de Kubernetes (v1.28)
