@@ -14,24 +14,22 @@
     replace: '# \1'
   become: yes
 
-- name: Enable IPv4 forwarding
-  sysctl:
-    name: net.ipv4.ip_forward
-    value: '1'
-    state: present
-  become: yes
-
+# CORRECTION : On charge le module AVANT de configurer le sysctl
 - name: Load br_netfilter module
   modprobe:
     name: br_netfilter
     state: present
   become: yes
 
-- name: Enable bridge-nf-call-iptables
+- name: Enable IPv4 forwarding and bridge-nf-call-iptables
   sysctl:
-    name: net.bridge.bridge-nf-call-iptables
-    value: '1'
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
     state: present
+    reload: yes
+  loop:
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+    - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
   become: yes
 
 # ==============================
@@ -127,23 +125,46 @@
   when: k8s_role == "master"
   become: yes
 
-- name: Setup kubeconfig for root
+- name: Setup kubeconfig for root AND seif
   when: k8s_role == "master"
   become: yes
   block:
-    - file:
+    - name: Create .kube directory for root
+      file:
         path: /root/.kube
         state: directory
+        mode: '0700'
 
-    - copy:
+    - name: Copy admin.conf to root
+      copy:
         src: /etc/kubernetes/admin.conf
         dest: /root/.kube/config
         remote_src: yes
+
+    # CORRECTION : Configuration automatique pour l'utilisateur seif
+    - name: Create .kube directory for seif
+      file:
+        path: /home/seif/.kube
+        state: directory
+        owner: seif
+        group: seif
+        mode: '0700'
+
+    - name: Copy admin.conf to seif
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/seif/.kube/config
+        remote_src: yes
+        owner: seif
+        group: seif
+        mode: '0600'
 
 - name: Install Flannel
   command: kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
   when: k8s_role == "master"
   become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
 
 - name: Generate join command
   command: kubeadm token create --print-join-command
