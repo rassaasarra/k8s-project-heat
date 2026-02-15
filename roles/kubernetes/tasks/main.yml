@@ -148,7 +148,7 @@
   become: yes
 
 # ==============================
-# MASTER SETUP
+# MASTER SETUP (ONLY ON MASTER)
 # ==============================
 
 - name: Initialize Master
@@ -192,7 +192,7 @@
   ignore_errors: yes
 
 # ==============================
-# INSTALL CALICO
+# INSTALL CALICO (ONLY ON MASTER)
 # ==============================
 
 - name: Download Calico manifest
@@ -219,7 +219,7 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
 
 # ==============================
-# GENERATE JOIN COMMAND + EXPOSE VIA HTTP
+# GENERATE JOIN COMMAND (MASTER ONLY)
 # ==============================
 
 - name: Generate join command
@@ -228,27 +228,8 @@
   when: k8s_role == "master"
   become: yes
 
-- name: Save join command to file (with containerd socket)
-  copy:
-    dest: /srv/join.sh
-    content: |
-      {{ join_cmd.stdout }} --cri-socket unix:///run/containerd/containerd.sock
-    mode: '0644'
+# (optionnel) afficher dans les logs ansible pour le copier facilement
+- name: Show join command (copy/paste for worker)
+  debug:
+    msg: "{{ join_cmd.stdout }}"
   when: k8s_role == "master"
-  become: yes
-
-- name: Ensure python3 is installed for HTTP server
-  apt:
-    name: python3
-    state: present
-    update_cache: yes
-  when: k8s_role == "master"
-  become: yes
-
-- name: Start simple HTTP server to serve join.sh
-  shell: |
-    nohup python3 -m http.server 8000 --directory /srv >/var/log/join-http.log 2>&1 &
-  args:
-    creates: /var/log/join-http.log
-  when: k8s_role == "master"
-  become: yes
