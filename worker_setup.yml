@@ -5,22 +5,24 @@
 
   vars:
     k8s_role: "worker"
+    master_ip: "10.0.0.34"
 
   tasks:
-
     - name: Include Kubernetes Role
       include_role:
         name: kubernetes
 
-    - name: Reset previous failed join
+    - name: Download join command from master
+      get_url:
+        url: "http://{{ master_ip }}:8000/join.sh"
+        dest: /tmp/join.sh
+        mode: '0700'
+
+    - name: Reset previous cluster state
       command: kubeadm reset -f
-      when: global_join_command is defined
       ignore_errors: yes
 
     - name: Join worker to cluster
-      command: >
-        {{ hostvars['localhost'].global_join_command }}
-        --cri-socket unix:///run/containerd/containerd.sock
+      command: /tmp/join.sh
       args:
         creates: /etc/kubernetes/kubelet.conf
-      when: hostvars['localhost'].global_join_command is defined
