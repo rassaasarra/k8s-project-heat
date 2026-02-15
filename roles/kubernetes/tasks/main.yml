@@ -184,7 +184,7 @@
 # ==============================
 
 - name: Remove Flannel if already installed
-  command: kubectl delete -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml --ignore-not-found=true
+  command: kubectl delete --wait=false https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml --ignore-not-found=true
   when: k8s_role == "master"
   become: yes
   environment:
