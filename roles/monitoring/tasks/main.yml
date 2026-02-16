@@ -15,17 +15,7 @@
         group: ubuntu
         mode: '0600'
 
-- name: Déployer Calico Network
-  become: yes
-  become_user: ubuntu
-  shell: |
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml --server-side
-    sleep 10
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
-  register: calico_res
-  until: calico_res.rc == 0
-  retries: 3
-  delay: 10
+
 
 - name: Installer Helm
   shell: |
