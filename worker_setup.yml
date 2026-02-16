@@ -2,18 +2,45 @@
 - name: Setup Kubernetes Worker
   hosts: localhost
   become: yes
+
   vars:
     k8s_role: "worker"
     join_file: "/etc/kubernetes/join-command.sh"
 
   tasks:
-    - name: Run Base Kubernetes Role (Prerequisites & Binaries)
+    - name: Include Kubernetes Role
       include_role:
-        [cite_start]name: roles/kubernetes [cite: 13, 27]
+        name: kubernetes
 
-    - name: Join Cluster
+    - name: Stop kubelet before join
+      service:
+        name: kubelet
+        state: stopped
+      ignore_errors: yes
+
+    - name: Check join command file exists (provided by cloud-init/Heat)
+      stat:
+        path: "{{ join_file }}"
+      register: joinfile
+
+    - name: Fail if join file missing
+      fail:
+        msg: "Missing {{ join_file }}. Heat/cloud-init must create it in worker user_data."
+      when: not joinfile.stat.exists
+
+    - name: Reset previous cluster state (safe)
+      command: kubeadm reset -f
+      ignore_errors: yes
+
+    - name: Join worker to cluster using join file (log to /var/log/kubeadm-join.log)
       shell: |
-        if [ ! -f /etc/kubernetes/kubelet.conf ]; then
-          bash {{ join_file }} --cri-socket unix:///run/containerd/containerd.sock
-        fi
-      [cite_start]become: yes [cite: 22, 27]
+        set -e
+        bash {{ join_file }} --cri-socket unix:///run/containerd/containerd.sock | tee /var/log/kubeadm-join.log
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+
+    - name: Start kubelet after join
+      service:
+        name: kubelet
+        state: started
+        enabled: yes
