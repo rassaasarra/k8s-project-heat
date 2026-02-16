@@ -1,7 +1,47 @@
-- name: Install Prometheus and Grafana via Manifests
+- name: Configurer Kubeconfig pour l'utilisateur ubuntu
+  block:
+    - name: Créer le dossier .kube
+      file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+    - name: Copier admin.conf
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: yes
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+- name: Déployer Calico Network
   become: yes
   become_user: ubuntu
   shell: |
-    kubectl create namespace monitoring || true
-    # Simplified: Deploying a combined manifest
-    kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/bundle.yaml
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml --server-side
+    sleep 10
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
+  register: calico_res
+  until: calico_res.rc == 0
+  retries: 3
+  delay: 10
+
+- name: Installer Helm
+  shell: |
+    if ! command -v helm &> /dev/null; then 
+      curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    fi
+  changed_when: false
+
+- name: Déployer la Stack Prometheus (Optimisé)
+  shell: |
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo update
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+      --namespace monitoring \
+      --create-namespace \
+      --no-hooks
+  register: helm_out
+  failed_when: "helm_out.rc != 0 and 'already exists' not in helm_out.stderr"
