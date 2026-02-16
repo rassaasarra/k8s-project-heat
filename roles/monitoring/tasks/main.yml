@@ -1,37 +1,54 @@
-- name: Configurer Kubeconfig pour l'utilisateur ubuntu
-  block:
-    - name: Créer le dossier .kube
-      file:
-        path: /home/ubuntu/.kube
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-    - name: Copier admin.conf
-      copy:
-        src: /etc/kubernetes/admin.conf
-        dest: /home/ubuntu/.kube/config
-        remote_src: yes
-        owner: ubuntu
-        group: ubuntu
-        mode: '0600'
+---
+- name: Wait for Kubernetes cluster to be ready
+  command: kubectl get nodes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nodes_status
+  until: nodes_status.rc == 0
+  retries: 30
+  delay: 10
+  when: node_role == 'master'
 
+- name: Create monitoring namespace
+  command: kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: node_role == 'master'
 
-
-- name: Installer Helm
-  shell: |
-    if ! command -v helm &> /dev/null; then 
-      curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    fi
-  changed_when: false
-
-- name: Déployer la Stack Prometheus (Optimisé)
-  shell: |
+# Deploy Prometheus Operator
+- name: Add Prometheus Helm repo
+  command: |
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
-    export KUBECONFIG=/etc/kubernetes/admin.conf
-    helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-      --namespace monitoring \
-      --create-namespace \
-      --no-hooks
-  register: helm_out
-  failed_when: "helm_out.rc != 0 and 'already exists' not in helm_out.stderr"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: node_role == 'master'
+
+- name: Install kube-prometheus-stack
+  command: >
+    helm upgrade --install prometheus prometheus-community/kube-prometheus-stack
+    --namespace monitoring
+    --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+    --set grafana.adminPassword=admin
+    --set grafana.service.type=NodePort
+    --set grafana.service.nodePort=30300
+    --set prometheus.service.type=NodePort
+    --set prometheus.service.nodePort=30900
+    --set alertmanager.service.type=NodePort
+    --set alertmanager.service.nodePort=30093
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: node_role == 'master'
+
+# Configure custom alerts
+- name: Deploy custom PrometheusRules
+  template:
+    src: prometheus-alerts.yml.j2
+    dest: /tmp/prometheus-alerts.yml
+  when: node_role == 'master'
+
+- name: Apply custom alerts
+  command: kubectl apply -f /tmp/prometheus-alerts.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: node_role == 'master'
