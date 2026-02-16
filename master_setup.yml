@@ -1,17 +1,7 @@
-- name: Configurer Kubeconfig pour ubuntu
-  block:
-    - name: Créer le dossier .kube
-      file:
-        path: /home/ubuntu/.kube
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-
-    - name: Copier admin.conf
-      copy:
-        src: /etc/kubernetes/admin.conf
-        dest: /home/ubuntu/.kube/config
-        remote_src: yes
-        owner: ubuntu
-        group: ubuntu
-        mode: '0600'
+- name: Setup K8s Master
+  hosts: localhost
+  become: yes
+  roles:
+    - { role: roles/kubernetes, vars: { k8s_role: 'master' } }
+    - role: roles/monitoring
+      tags: monitoring
