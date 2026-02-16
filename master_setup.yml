@@ -3,4 +3,4 @@
   become: yes
   roles:
     - { role: roles/kubernetes, vars: { k8s_role: 'master' } }
-    # - role: roles/monitoring  
+    - role: roles/monitoring  
