@@ -103,11 +103,11 @@
   become: yes
   shell: |
     set -e
-    # Evite l'erreur Helm: Duplicate value "http-web"
     kubectl -n monitoring delete svc prometheus-grafana --ignore-not-found=true
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   changed_when: false
+
 
 - name: Déployer/Mettre à jour kube-prometheus-stack (Grafana NodePort) (master only)
   when: k8s_role == "master"
