@@ -1,77 +1,43 @@
----
 # roles/monitoring/tasks/main.yml
 
-# ==============================
-# Guard: monitoring only on master
-# ==============================
 - name: Stop if not master
   meta: end_play
   when: k8s_role != "master"
 
-# ==============================
-# Kubeconfig for ubuntu user
-# ==============================
-- name: Créer le dossier .kube pour ubuntu
-  file:
-    path: /home/ubuntu/.kube
-    state: directory
-    owner: ubuntu
-    group: ubuntu
-    mode: "0700"
-  become: yes
-
-- name: Copier admin.conf vers kubeconfig ubuntu
-  copy:
-    src: /etc/kubernetes/admin.conf
-    dest: /home/ubuntu/.kube/config
-    remote_src: yes
-    owner: ubuntu
-    group: ubuntu
-    mode: "0600"
-  become: yes
-
-# ==============================
-# Helm install
-# ==============================
-- name: Vérifier si helm existe
-  command: helm version --short
-  register: helm_check
-  failed_when: false
-  changed_when: false
-  become: yes
-
 - name: Installer Helm si absent
+  become: yes
   shell: |
     set -e
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    if ! command -v helm >/dev/null 2>&1; then
+      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    fi
   args:
     executable: /bin/bash
-  when: helm_check.rc != 0
-  become: yes
+  changed_when: false
 
-# ==============================
-# Deploy kube-prometheus-stack
-# ==============================
 - name: Ajouter repo prometheus-community
+  become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
-    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
     helm repo update
   args:
     executable: /bin/bash
-  become: yes
+  changed_when: false
 
 - name: Créer namespace monitoring si absent
+  become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
     kubectl get ns monitoring >/dev/null 2>&1 || kubectl create ns monitoring
   args:
     executable: /bin/bash
-  become: yes
+  changed_when: false
 
 - name: Déployer kube-prometheus-stack
+  become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
@@ -81,36 +47,44 @@
   args:
     executable: /bin/bash
   register: helm_out
+  retries: 5
+  delay: 20
+  until: helm_out.rc == 0
+
+- name: Attendre l'operator Prometheus
   become: yes
-
-- name: Fail si helm a échoué
-  fail:
-    msg: |
-      Helm failed (rc={{ helm_out.rc }}):
-      STDOUT={{ helm_out.stdout | default('') }}
-      STDERR={{ helm_out.stderr | default('') }}
-  when: helm_out.rc != 0
-
-# ==============================
-# Wait for key pods
-# ==============================
-- name: Attendre que les pods monitoring soient Ready
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
-    kubectl -n monitoring wait --for=condition=Ready pod --all --timeout=600s
+    kubectl -n monitoring wait --for=condition=Available deploy \
+      -l app.kubernetes.io/name=kube-prometheus-stack-prometheus-operator \
+      --timeout=600s
   args:
     executable: /bin/bash
-  register: wait_mon
+  register: op_wait
   retries: 6
   delay: 20
-  until: wait_mon.rc == 0
-  become: yes
+  until: op_wait.rc == 0
+  changed_when: false
 
-# ==============================
-# Print useful info
-# ==============================
+- name: Attendre Grafana Ready
+  become: yes
+  shell: |
+    set -e
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    kubectl -n monitoring wait --for=condition=Ready pod \
+      -l app.kubernetes.io/name=grafana \
+      --timeout=600s
+  args:
+    executable: /bin/bash
+  register: graf_wait
+  retries: 6
+  delay: 20
+  until: graf_wait.rc == 0
+  changed_when: false
+
 - name: Récupérer le mot de passe Grafana (admin)
+  become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
@@ -120,27 +94,12 @@
   register: grafana_pass
   changed_when: false
   failed_when: false
-  become: yes
 
-- name: Afficher les commandes de test (Grafana/Prometheus)
+- name: Afficher infos Grafana
   debug:
     msg: |
       ✅ Monitoring installé.
-
-      🔐 Grafana credentials:
-      - user: admin
-      - password: {{ grafana_pass.stdout | default('N/A') }}
-
-      🌐 Port-forward (depuis le master):
-      1) Grafana:
-         kubectl -n monitoring port-forward svc/prometheus-grafana 3000:80 --address 0.0.0.0
-         => http://<MASTER_IP>:3000
-
-      2) Prometheus:
-         kubectl -n monitoring port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 --address 0.0.0.0
-         => http://<MASTER_IP>:9090
-
-      🔎 Vérifs:
-      - kubectl get pods -n monitoring -o wide
-      - kubectl get svc -n monitoring
-      - kubectl get events -n monitoring --sort-by=.lastTimestamp | tail -40
+      🔐 Grafana: admin / {{ grafana_pass.stdout | default('N/A') }}
+      🌐 Port-forward:
+        kubectl -n monitoring port-forward svc/prometheus-grafana 3000:80 --address 0.0.0.0
+        http://<MASTER_IP>:3000
