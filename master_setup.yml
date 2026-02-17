@@ -20,4 +20,4 @@
     - role: kubernetes
 
     - role: monitoring
-      when: node_role == "master"
+      when: k8s_role == "master"
