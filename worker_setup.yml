@@ -3,4 +3,4 @@
   connection: local
   become: yes
   roles:
-    - kubernetes
+    - kubernetes  # Installe juste Docker et les outils K8s
