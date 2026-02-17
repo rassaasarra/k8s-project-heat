@@ -1,8 +1,4 @@
 ---
-# ========================================
-# SECTION COMMUNE (Master + Worker)
-# ========================================
-
 - name: Attendre que le verrou APT soit libéré
   shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done;
   changed_when: false
@@ -16,16 +12,14 @@
 - name: Désactiver le Swap
   shell: |
     swapoff -a
-    sed -i '/\\sswap\\s/ s/^\\(.*\\)$/#\\1/g' /etc/fstab
+    sed -i '/\sswap\s/ s/^\(.*\)$/#\1/g' /etc/fstab
   when: ansible_swaptotal_mb > 0
 
 - name: Charger les modules noyau
   modprobe:
     name: "{{ item }}"
     state: present
-  loop: 
-    - overlay
-    - br_netfilter
+  loop: [overlay, br_netfilter]
 
 - name: Configurer le sysctl
   sysctl:
@@ -45,11 +39,7 @@
 
 - name: Installer Docker et K8s
   apt:
-    name: 
-      - docker.io
-      - kubelet
-      - kubeadm
-      - kubectl
+    name: [docker.io, kubelet, kubeadm, kubectl]
     state: present
     update_cache: yes
 
@@ -68,24 +58,17 @@
     - get_url:
         url: https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.10/cri-dockerd_0.3.10.3-0.ubuntu-jammy_amd64.deb
         dest: /tmp/cri-dockerd.deb
-    
     - apt:
         deb: /tmp/cri-dockerd.deb
         state: present
-    
     - systemd:
         name: "{{ item }}"
         state: restarted
         enabled: yes
         daemon_reload: yes
-      loop: 
-        - docker
-        - cri-docker
+      loop: [docker, cri-docker]
 
-# ========================================
-# SECTION MASTER
-# ========================================
-
+# --- SECTION MASTER ---
 - name: Initialiser le Master
   command: >
     kubeadm init --pod-network-cidr={{ pod_network_cidr }} 
@@ -96,42 +79,29 @@
   args:
     creates: /etc/kubernetes/admin.conf
 
-- name: Configurer Kubeconfig pour l'utilisateur ubuntu
-  block:
-    - name: Créer le dossier .kube
-      file:
-        path: /home/ubuntu/.kube
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-
-    - name: Copier admin.conf
-      copy:
-        src: /etc/kubernetes/admin.conf
-        dest: /home/ubuntu/.kube/config
-        remote_src: yes
-        owner: ubuntu
-        group: ubuntu
-        mode: '0600'
+- name: Configurer kubectl pour ubuntu
+  file:
+    path: /home/ubuntu/.kube
+    state: directory
+    owner: ubuntu
+    group: ubuntu
   when: node_role == 'master'
 
-- name: Déployer Calico Network
-  become: yes
-  become_user: ubuntu
-  shell: |
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml --server-side
-    sleep 10
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
-  register: calico_res
-  until: calico_res.rc == 0
-  retries: 3
-  delay: 10
+- name: Copier le config kube
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/ubuntu/.kube/config
+    remote_src: yes
+    owner: ubuntu
+    group: ubuntu
   when: node_role == 'master'
 
-# ========================================
-# SECTION WORKER
-# ========================================
+- name: Installer le réseau Calico
+  become: false
+  command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+  when: node_role == 'master'
 
+# --- SECTION WORKER ---
 - name: Joindre le Cluster
   command: >
     kubeadm join {{ master_ip }}:6443 
