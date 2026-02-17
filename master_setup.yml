@@ -1,6 +1,23 @@
 ---
-- hosts: localhost
+- name: Full Cluster Deployment
+  hosts: localhost
   connection: local
   become: yes
+
+  vars:
+    node_role: "{{ node_role | default('unknown') }}"
+    master_ip: "{{ master_ip | default('') }}"
+    token: "{{ token | default('abcdef.1234567890abcdef') }}"
+    pod_network_cidr: "{{ pod_network_cidr | default('192.168.0.0/16') }}"
+
+  pre_tasks:
+    - name: Valider les variables obligatoires
+      fail:
+        msg: "La variable 'node_role' doit être 'master' ou 'worker'."
+      when: node_role not in ["master", "worker"]
+
   roles:
-    - kubernetes
+    - role: kubernetes
+
+    - role: monitoring
+      when: node_role == "master"
