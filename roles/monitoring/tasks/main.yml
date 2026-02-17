@@ -1,4 +1,11 @@
-- name: Configurer Kubeconfig pour l'utilisateur ubuntu
+---
+# ==============================
+# KUBECONFIG (pour ubuntu)
+# ==============================
+
+- name: Configurer Kubeconfig pour l'utilisateur ubuntu (master only)
+  when: k8s_role == "master"
+  become: yes
   block:
     - name: Créer le dossier .kube
       file:
@@ -6,6 +13,8 @@
         state: directory
         owner: ubuntu
         group: ubuntu
+        mode: '0700'
+
     - name: Copier admin.conf
       copy:
         src: /etc/kubernetes/admin.conf
@@ -15,33 +24,59 @@
         group: ubuntu
         mode: '0600'
 
-- name: Déployer Calico Network
+# ==============================
+# CALICO (master only)
+# ==============================
+
+- name: Déployer Calico Network (master only)
+  when: k8s_role == "master"
   become: yes
-  become_user: ubuntu
   shell: |
+    set -e
     kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml --server-side
     sleep 10
     kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: calico_res
-  until: calico_res.rc == 0
-  retries: 3
-  delay: 10
+  until: calico_res is succeeded
+  retries: 5
+  delay: 15
+  changed_when: "'configured' in (calico_res.stdout | default('')) or 'created' in (calico_res.stdout | default(''))"
+  failed_when: calico_res is failed
+
+# ==============================
+# HELM
+# ==============================
 
 - name: Installer Helm
+  become: yes
   shell: |
-    if ! command -v helm &> /dev/null; then 
-      curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    set -e
+    if ! command -v helm >/dev/null 2>&1; then
+      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     fi
   changed_when: false
 
-- name: Déployer la Stack Prometheus (Optimisé)
+# ==============================
+# PROMETHEUS STACK (master only)
+# ==============================
+
+- name: Déployer la Stack Prometheus (Optimisé) (master only)
+  when: k8s_role == "master"
+  become: yes
   shell: |
+    set -e
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
-    export KUBECONFIG=/etc/kubernetes/admin.conf
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
       --create-namespace \
       --no-hooks
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: helm_out
-  failed_when: "helm_out.rc != 0 and 'already exists' not in helm_out.stderr"
+  until: helm_out is succeeded
+  retries: 5
+  delay: 20
+  failed_when: helm_out is failed and ('already exists' not in (helm_out.stderr | default('')))
