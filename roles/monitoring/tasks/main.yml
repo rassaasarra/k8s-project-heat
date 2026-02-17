@@ -21,6 +21,7 @@
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+    helm repo add grafana https://grafana.github.io/helm-charts || true
     helm repo update
   args:
     executable: /bin/bash
@@ -36,14 +37,22 @@
     executable: /bin/bash
   changed_when: false
 
-- name: Déployer kube-prometheus-stack
+# IMPORTANT: values inline => Grafana accessible sans port-forward
+- name: Déployer kube-prometheus-stack (Grafana NodePort auto)
   become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
+
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
-      --create-namespace
+      --create-namespace \
+      --set grafana.enabled=true \
+      --set grafana.service.type=NodePort \
+      --set grafana.service.nodePort=30000 \
+      --set grafana.adminUser=admin \
+      --wait \
+      --timeout 15m
   args:
     executable: /bin/bash
   register: helm_out
@@ -95,11 +104,35 @@
   changed_when: false
   failed_when: false
 
+- name: Récupérer le NodePort Grafana
+  become: yes
+  shell: |
+    set -e
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    kubectl -n monitoring get svc prometheus-grafana -o jsonpath="{.spec.ports[0].nodePort}"
+  args:
+    executable: /bin/bash
+  register: grafana_nodeport
+  changed_when: false
+  failed_when: false
+
+- name: Récupérer l'IP du master
+  become: yes
+  shell: |
+    hostname -I | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: master_ip
+  changed_when: false
+
 - name: Afficher infos Grafana
   debug:
     msg: |
       ✅ Monitoring installé.
       🔐 Grafana: admin / {{ grafana_pass.stdout | default('N/A') }}
-      🌐 Port-forward:
-        kubectl -n monitoring port-forward svc/prometheus-grafana 3000:80 --address 0.0.0.0
-        http://<MASTER_IP>:3000
+      🌐 Accès direct (NodePort):
+        http://{{ master_ip.stdout }}:{{ grafana_nodeport.stdout | default('30000') }}
+
+      🔎 Vérification:
+        kubectl -n monitoring get pods
+        kubectl -n monitoring get svc
