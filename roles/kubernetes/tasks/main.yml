@@ -215,6 +215,7 @@
 
 - name: Apply Calico
   command: kubectl apply -f /tmp/calico.yaml
+  register: calico_res  # <--- AJOUTE UNIQUEMENT CETTE LIGNE ICI
   when: k8s_role == "master"
   become: yes
   environment:
