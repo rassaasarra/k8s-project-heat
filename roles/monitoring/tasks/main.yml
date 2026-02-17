@@ -38,12 +38,27 @@
     kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
-  register: calico_res
-  until: calico_res is succeeded
-  retries: 5
+  register: calico_apply
+  changed_when: "'configured' in (calico_apply.stdout | default('')) or 'created' in (calico_apply.stdout | default(''))"
+
+- name: Attendre que Calico soit prêt (master only)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    set -e
+    # Calico via tigera-operator -> ressources dans calico-system (souvent)
+    # On attend que les pods calico soient Running/Ready
+    kubectl -n calico-system get pods >/dev/null 2>&1 || true
+    # Wait générique: on attend les daemonsets/deployments importants si présents
+    kubectl -n calico-system wait --for=condition=Available deploy --all --timeout=300s >/dev/null 2>&1 || true
+    kubectl -n calico-system wait --for=condition=Ready pod --all --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_wait
+  retries: 6
   delay: 15
-  changed_when: "'configured' in (calico_res.stdout | default('')) or 'created' in (calico_res.stdout | default(''))"
-  failed_when: calico_res is failed
+  until: calico_wait is succeeded
+  changed_when: false
 
 # ==============================
 # HELM
@@ -58,25 +73,97 @@
     fi
   changed_when: false
 
-# ==============================
-# PROMETHEUS STACK (master only)
-# ==============================
-
-- name: Déployer la Stack Prometheus (Optimisé) (master only)
+- name: Ajouter repo prometheus-community (master only)
   when: k8s_role == "master"
   become: yes
   shell: |
     set -e
-    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
     helm repo update
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+# ==============================
+# PROMETHEUS STACK (master only)
+# ==============================
+
+- name: Créer namespace monitoring (master only)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    set -e
+    kubectl get ns monitoring >/dev/null 2>&1 || kubectl create ns monitoring
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Nettoyage - supprimer le service Grafana s'il est cassé (master only)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    set -e
+    # Evite l'erreur Helm: Duplicate value "http-web"
+    kubectl -n monitoring delete svc prometheus-grafana --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Déployer/Mettre à jour kube-prometheus-stack (Grafana NodePort) (master only)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    set -e
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
       --create-namespace \
-      --no-hooks
+      --set grafana.service.type=NodePort \
+      --set grafana.service.nodePort=30375
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: helm_out
-  until: helm_out is succeeded
   retries: 5
   delay: 20
-  failed_when: helm_out is failed and ('already exists' not in (helm_out.stderr | default('')))
+  until: helm_out is succeeded
+  failed_when: helm_out is failed
+
+- name: Attendre le secret admission prometheus-operator (master only)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    set -e
+    kubectl -n monitoring get secret prometheus-kube-prometheus-admission >/dev/null 2>&1
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: admission_secret
+  retries: 10
+  delay: 10
+  until: admission_secret is succeeded
+  changed_when: false
+
+- name: Attendre que l'operator Prometheus soit Running (master only)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    set -e
+    kubectl -n monitoring wait --for=condition=Ready pod \
+      -l app.kubernetes.io/name=kube-prometheus-stack-prometheus-operator \
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: operator_ready
+  retries: 6
+  delay: 15
+  until: operator_ready is succeeded
+  changed_when: false
+
+- name: Afficher l'URL d'accès Grafana (info)
+  when: k8s_role == "master"
+  become: yes
+  shell: |
+    echo "Grafana NodePort: http://<IP_NODE>:30375"
+    echo "Nodes:"
+    kubectl get nodes -o wide
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
