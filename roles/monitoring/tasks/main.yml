@@ -1,169 +1,146 @@
 ---
-# ==============================
-# KUBECONFIG (pour ubuntu)
-# ==============================
+# roles/monitoring/tasks/main.yml
 
-- name: Configurer Kubeconfig pour l'utilisateur ubuntu (master only)
-  when: k8s_role == "master"
+# ==============================
+# Guard: monitoring only on master
+# ==============================
+- name: Stop if not master
+  meta: end_play
+  when: k8s_role != "master"
+
+# ==============================
+# Kubeconfig for ubuntu user
+# ==============================
+- name: Créer le dossier .kube pour ubuntu
+  file:
+    path: /home/ubuntu/.kube
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0700"
   become: yes
-  block:
-    - name: Créer le dossier .kube
-      file:
-        path: /home/ubuntu/.kube
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-        mode: '0700'
 
-    - name: Copier admin.conf
-      copy:
-        src: /etc/kubernetes/admin.conf
-        dest: /home/ubuntu/.kube/config
-        remote_src: yes
-        owner: ubuntu
-        group: ubuntu
-        mode: '0600'
+- name: Copier admin.conf vers kubeconfig ubuntu
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/ubuntu/.kube/config
+    remote_src: yes
+    owner: ubuntu
+    group: ubuntu
+    mode: "0600"
+  become: yes
 
 # ==============================
-# CALICO (master only)
+# Helm install
 # ==============================
-
-- name: Déployer Calico Network (master only)
-  when: k8s_role == "master"
-  become: yes
-  shell: |
-    set -e
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml --server-side
-    sleep 10
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  register: calico_apply
-  changed_when: "'configured' in (calico_apply.stdout | default('')) or 'created' in (calico_apply.stdout | default(''))"
-
-- name: Attendre que Calico soit prêt (master only)
-  when: k8s_role == "master"
-  become: yes
-  shell: |
-    set -e
-    # Calico via tigera-operator -> ressources dans calico-system (souvent)
-    # On attend que les pods calico soient Running/Ready
-    kubectl -n calico-system get pods >/dev/null 2>&1 || true
-    # Wait générique: on attend les daemonsets/deployments importants si présents
-    kubectl -n calico-system wait --for=condition=Available deploy --all --timeout=300s >/dev/null 2>&1 || true
-    kubectl -n calico-system wait --for=condition=Ready pod --all --timeout=300s
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  register: calico_wait
-  retries: 6
-  delay: 15
-  until: calico_wait is succeeded
+- name: Vérifier si helm existe
+  command: helm version --short
+  register: helm_check
+  failed_when: false
   changed_when: false
-
-# ==============================
-# HELM
-# ==============================
-
-- name: Installer Helm
   become: yes
+
+- name: Installer Helm si absent
   shell: |
     set -e
-    if ! command -v helm >/dev/null 2>&1; then
-      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    fi
-  changed_when: false
-
-- name: Ajouter repo prometheus-community (master only)
-  when: k8s_role == "master"
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    executable: /bin/bash
+  when: helm_check.rc != 0
   become: yes
+
+# ==============================
+# Deploy kube-prometheus-stack
+# ==============================
+- name: Ajouter repo prometheus-community
   shell: |
     set -e
-    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  changed_when: false
-
-# ==============================
-# PROMETHEUS STACK (master only)
-# ==============================
-
-- name: Créer namespace monitoring (master only)
-  when: k8s_role == "master"
+  args:
+    executable: /bin/bash
   become: yes
+
+- name: Créer namespace monitoring si absent
   shell: |
     set -e
+    export KUBECONFIG=/etc/kubernetes/admin.conf
     kubectl get ns monitoring >/dev/null 2>&1 || kubectl create ns monitoring
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  changed_when: false
-
-- name: Nettoyage - supprimer le service Grafana s'il est cassé (master only)
-  when: k8s_role == "master"
+  args:
+    executable: /bin/bash
   become: yes
+
+- name: Déployer kube-prometheus-stack
   shell: |
     set -e
-    kubectl -n monitoring delete svc prometheus-grafana --ignore-not-found=true
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  changed_when: false
-
-
-- name: Déployer/Mettre à jour kube-prometheus-stack (Grafana NodePort) (master only)
-  when: k8s_role == "master"
-  become: yes
-  shell: |
-    set -e
+    export KUBECONFIG=/etc/kubernetes/admin.conf
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
-      --create-namespace \
-      --set grafana.service.type=NodePort \
-      --set grafana.service.nodePort=30375
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
+      --create-namespace
+  args:
+    executable: /bin/bash
   register: helm_out
-  retries: 5
-  delay: 20
-  until: helm_out is succeeded
-  failed_when: helm_out is failed
-
-- name: Attendre le secret admission prometheus-operator (master only)
-  when: k8s_role == "master"
   become: yes
+
+- name: Fail si helm a échoué
+  fail:
+    msg: |
+      Helm failed (rc={{ helm_out.rc }}):
+      STDOUT={{ helm_out.stdout | default('') }}
+      STDERR={{ helm_out.stderr | default('') }}
+  when: helm_out.rc != 0
+
+# ==============================
+# Wait for key pods
+# ==============================
+- name: Attendre que les pods monitoring soient Ready
   shell: |
     set -e
-    kubectl -n monitoring get secret prometheus-kube-prometheus-admission >/dev/null 2>&1
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  register: admission_secret
-  retries: 10
-  delay: 10
-  until: admission_secret is succeeded
-  changed_when: false
-
-- name: Attendre que l'operator Prometheus soit Running (master only)
-  when: k8s_role == "master"
-  become: yes
-  shell: |
-    set -e
-    kubectl -n monitoring wait --for=condition=Ready pod \
-      -l app.kubernetes.io/name=kube-prometheus-stack-prometheus-operator \
-      --timeout=300s
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  register: operator_ready
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    kubectl -n monitoring wait --for=condition=Ready pod --all --timeout=600s
+  args:
+    executable: /bin/bash
+  register: wait_mon
   retries: 6
-  delay: 15
-  until: operator_ready is succeeded
-  changed_when: false
-
-- name: Afficher l'URL d'accès Grafana (info)
-  when: k8s_role == "master"
+  delay: 20
+  until: wait_mon.rc == 0
   become: yes
+
+# ==============================
+# Print useful info
+# ==============================
+- name: Récupérer le mot de passe Grafana (admin)
   shell: |
-    echo "Grafana NodePort: http://<IP_NODE>:30375"
-    echo "Nodes:"
-    kubectl get nodes -o wide
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
+    set -e
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    kubectl -n monitoring get secret prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
+  args:
+    executable: /bin/bash
+  register: grafana_pass
   changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Afficher les commandes de test (Grafana/Prometheus)
+  debug:
+    msg: |
+      ✅ Monitoring installé.
+
+      🔐 Grafana credentials:
+      - user: admin
+      - password: {{ grafana_pass.stdout | default('N/A') }}
+
+      🌐 Port-forward (depuis le master):
+      1) Grafana:
+         kubectl -n monitoring port-forward svc/prometheus-grafana 3000:80 --address 0.0.0.0
+         => http://<MASTER_IP>:3000
+
+      2) Prometheus:
+         kubectl -n monitoring port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 --address 0.0.0.0
+         => http://<MASTER_IP>:9090
+
+      🔎 Vérifs:
+      - kubectl get pods -n monitoring -o wide
+      - kubectl get svc -n monitoring
+      - kubectl get events -n monitoring --sort-by=.lastTimestamp | tail -40
