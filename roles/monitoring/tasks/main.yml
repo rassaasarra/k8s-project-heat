@@ -1,8 +1,35 @@
-# roles/monitoring/tasks/main.yml
-
+---
 - name: Stop if not master
   meta: end_play
   when: k8s_role != "master"
+
+# ==============================
+# ATTENDRE QUE LES WORKERS REJOIGNENT
+# AVANT d'installer le monitoring
+# ==============================
+
+- name: Attendre que les workers rejoignent le cluster (3 nodes Ready)
+  become: yes
+  shell: |
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c Ready || echo 0)
+    echo "Nodes Ready: $COUNT/3"
+    until [ "$COUNT" -ge 3 ]; do
+      echo "Waiting for workers... $COUNT/3 Ready"
+      kubectl get nodes --no-headers 2>/dev/null || true
+      sleep 20
+      COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c Ready || echo 0)
+    done
+    echo "✅ Les 3 nodes sont Ready !"
+    kubectl get nodes
+  args:
+    executable: /bin/bash
+  timeout: 1800
+  changed_when: false
+
+# ==============================
+# INSTALLATION HELM
+# ==============================
 
 - name: Installer Helm si absent
   become: yes
@@ -11,6 +38,7 @@
     if ! command -v helm >/dev/null 2>&1; then
       curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     fi
+    helm version --short >/dev/null
   args:
     executable: /bin/bash
   changed_when: false
@@ -27,6 +55,10 @@
     executable: /bin/bash
   changed_when: false
 
+# ==============================
+# NAMESPACE MONITORING
+# ==============================
+
 - name: Créer namespace monitoring si absent
   become: yes
   shell: |
@@ -37,13 +69,15 @@
     executable: /bin/bash
   changed_when: false
 
-# IMPORTANT: values inline => Grafana accessible sans port-forward
-- name: Déployer kube-prometheus-stack (Grafana NodePort auto)
+# ==============================
+# DEPLOIEMENT KUBE-PROMETHEUS-STACK
+# ==============================
+
+- name: Déployer kube-prometheus-stack (Grafana NodePort 30000)
   become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
-
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
       --create-namespace \
@@ -51,14 +85,21 @@
       --set grafana.service.type=NodePort \
       --set grafana.service.nodePort=30000 \
       --set grafana.adminUser=admin \
+      --set kubeEtcd.enabled=false \
+      --set kubeControllerManager.enabled=false \
+      --set kubeScheduler.enabled=false \
       --wait \
       --timeout 15m
   args:
     executable: /bin/bash
   register: helm_out
-  retries: 5
+  retries: 3
   delay: 20
   until: helm_out.rc == 0
+
+# ==============================
+# ATTENDRE QUE TOUT SOIT READY
+# ==============================
 
 - name: Attendre l'operator Prometheus
   become: yes
@@ -92,12 +133,17 @@
   until: graf_wait.rc == 0
   changed_when: false
 
-- name: Récupérer le mot de passe Grafana (admin)
+# ==============================
+# RECUPERER LES INFOS D'ACCES
+# ==============================
+
+- name: Récupérer le mot de passe Grafana
   become: yes
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
-    kubectl -n monitoring get secret prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
+    kubectl -n monitoring get secret prometheus-grafana \
+      -o jsonpath="{.data.admin-password}" | base64 -d
   args:
     executable: /bin/bash
   register: grafana_pass
@@ -109,7 +155,8 @@
   shell: |
     set -e
     export KUBECONFIG=/etc/kubernetes/admin.conf
-    kubectl -n monitoring get svc prometheus-grafana -o jsonpath="{.spec.ports[0].nodePort}"
+    kubectl -n monitoring get svc prometheus-grafana \
+      -o jsonpath="{.spec.ports[0].nodePort}"
   args:
     executable: /bin/bash
   register: grafana_nodeport
@@ -122,17 +169,24 @@
     hostname -I | awk '{print $1}'
   args:
     executable: /bin/bash
-  register: master_ip
+  register: master_ip_addr
   changed_when: false
+
+# ==============================
+# AFFICHER LES INFOS FINALES
+# ==============================
 
 - name: Afficher infos Grafana
   debug:
     msg: |
-      ✅ Monitoring installé.
-      🔐 Grafana: admin / {{ grafana_pass.stdout | default('N/A') }}
-      🌐 Accès direct (NodePort):
-        http://{{ master_ip.stdout }}:{{ grafana_nodeport.stdout | default('30000') }}
-
+      ✅ Monitoring installé avec succès.
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      🔐 Grafana login : admin
+      🔐 Grafana pass  : {{ grafana_pass.stdout | default('N/A') }}
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      🌐 Accès Grafana (NodePort):
+         http://{{ master_ip_addr.stdout }}:{{ grafana_nodeport.stdout | default('30000') }}
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       🔎 Vérification:
-        kubectl -n monitoring get pods
-        kubectl -n monitoring get svc
+         kubectl -n monitoring get pods
+         kubectl -n monitoring get svc
