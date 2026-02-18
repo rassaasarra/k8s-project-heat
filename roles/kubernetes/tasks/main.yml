@@ -110,8 +110,6 @@
   when: not containerd_sock.stat.exists
   become: yes
 
-
-
 # ==============================
 # INSTALLATION KUBERNETES
 # ==============================
@@ -215,7 +213,7 @@
 
 - name: Apply Calico
   command: kubectl apply -f /tmp/calico.yaml
-  register: calico_res  # <--- AJOUTE UNIQUEMENT CETTE LIGNE ICI
+  register: calico_res
   when: k8s_role == "master"
   become: yes
   environment:
@@ -231,8 +229,74 @@
   when: k8s_role == "master"
   become: yes
 
-# (optionnel) afficher dans les logs ansible pour le copier facilement
 - name: Show join command (copy/paste for worker)
   debug:
     msg: "{{ join_cmd.stdout }}"
   when: k8s_role == "master"
+
+# ==============================
+# SERVE JOIN COMMAND VIA HTTP PORT 8000 (MASTER ONLY)
+# Worker cherche : http://MASTER_IP:8000/join.sh
+# ==============================
+
+- name: Create /var/www/join directory
+  file:
+    path: /var/www/join
+    state: directory
+    mode: '0755'
+  when: k8s_role == "master"
+  become: yes
+
+- name: Save join command to /var/www/join/join.sh
+  copy:
+    content: "{{ join_cmd.stdout }}"
+    dest: /var/www/join/join.sh
+    mode: '0644'
+  when: k8s_role == "master"
+  become: yes
+
+- name: Create systemd service for HTTP token server
+  copy:
+    dest: /etc/systemd/system/k8s-token-server.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=K8s Join Token HTTP Server
+      After=network.target
+
+      [Service]
+      WorkingDirectory=/var/www/join
+      ExecStart=/usr/bin/python3 -m http.server 8000
+      Restart=on-failure
+      RestartSec=5
+      User=root
+
+      [Install]
+      WantedBy=multi-user.target
+  when: k8s_role == "master"
+  become: yes
+
+- name: Enable and start k8s-token-server
+  systemd:
+    name: k8s-token-server
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  when: k8s_role == "master"
+  become: yes
+
+- name: Wait for HTTP token server to be ready on port 8000
+  wait_for:
+    host: 0.0.0.0
+    port: 8000
+    timeout: 30
+  when: k8s_role == "master"
+  become: yes
+
+- name: Confirm join.sh is accessible via HTTP
+  uri:
+    url: "http://{{ ansible_default_ipv4.address }}:8000/join.sh"
+    method: GET
+    status_code: 200
+  when: k8s_role == "master"
+  become: yes
