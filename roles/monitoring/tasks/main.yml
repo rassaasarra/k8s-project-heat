@@ -88,7 +88,7 @@
       --set grafana.adminUser=admin \
       --set grafana.sidecar.dashboards.enabled=true \
       --set grafana.sidecar.dashboards.label=grafana_dashboard \
-      --set grafana.sidecar.dashboards.labelValue="1" \
+      --set-string grafana.sidecar.dashboards.labelValue="1" \
       --set grafana.sidecar.dashboards.searchNamespace=ALL \
       --set kubeEtcd.enabled=false \
       --set kubeControllerManager.enabled=false \
