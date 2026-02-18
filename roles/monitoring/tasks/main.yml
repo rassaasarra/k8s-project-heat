@@ -88,7 +88,7 @@
       --set grafana.adminUser=admin \
       --set grafana.sidecar.dashboards.enabled=true \
       --set grafana.sidecar.dashboards.label=grafana_dashboard \
-      --set-string grafana.sidecar.dashboards.labelValue="1" \
+      --set grafana.sidecar.dashboards.labelValue="1" \
       --set grafana.sidecar.dashboards.searchNamespace=ALL \
       --set kubeEtcd.enabled=false \
       --set kubeControllerManager.enabled=false \
@@ -250,9 +250,9 @@
                 "type": "timeseries",
                 "datasource": { "type": "prometheus", "uid": "prometheus" },
                 "targets": [
-                  { "expr": "kube_horizontalpodautoscaler_status_current_replicas", "legendFormat": "Current - {{horizontalpodautoscaler}}", "refId": "A" },
-                  { "expr": "kube_horizontalpodautoscaler_spec_max_replicas", "legendFormat": "Max - {{horizontalpodautoscaler}}", "refId": "B" },
-                  { "expr": "kube_horizontalpodautoscaler_spec_min_replicas", "legendFormat": "Min - {{horizontalpodautoscaler}}", "refId": "C" }
+                  { "expr": "kube_horizontalpodautoscaler_status_current_replicas", "legendFormat": "Current - {{ '{{' }}horizontalpodautoscaler{{ '}}' }}", "refId": "A" },
+                  { "expr": "kube_horizontalpodautoscaler_spec_max_replicas", "legendFormat": "Max - {{ '{{' }}horizontalpodautoscaler{{ '}}' }}", "refId": "B" },
+                  { "expr": "kube_horizontalpodautoscaler_spec_min_replicas", "legendFormat": "Min - {{ '{{' }}horizontalpodautoscaler{{ '}}' }}", "refId": "C" }
                 ],
                 "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": true }, "decimals": 0, "min": 0 } },
                 "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
@@ -263,7 +263,7 @@
                 "title": "Restarts Pods Crash Detection",
                 "type": "timeseries",
                 "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total[15m])", "legendFormat": "{{pod}} - {{container}}", "refId": "A" }],
+                "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total[15m])", "legendFormat": "{{ '{{' }}pod{{ '}}' }} - {{ '{{' }}container{{ '}}' }}", "refId": "A" }],
                 "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 15, "spanNulls": true, "thresholdsStyle": {"mode":"line"} }, "decimals": 0, "min": 0, "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":3}] } } },
                 "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
               },
