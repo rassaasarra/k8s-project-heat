@@ -161,7 +161,20 @@
     creates: /etc/kubernetes/admin.conf
   when: k8s_role == "master"
   become: yes
+- name: Create .kube directory for ubuntu user
+  file:
+    path: /home/ubuntu/.kube
+    owner: ubuntu
+    group: ubuntu
+    mode: '0700'
 
+- name: Copy admin.conf to ubuntu user
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/ubuntu/.kube/config
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'
 - name: Setup kubeconfig for root
   when: k8s_role == "master"
   become: yes
