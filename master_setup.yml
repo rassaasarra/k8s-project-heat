@@ -3,35 +3,17 @@
   hosts: localhost
   connection: local
   become: yes
-
   vars:
     k8s_role: "{{ k8s_role | default('unknown') }}"
     master_ip: "{{ master_ip | default('') }}"
     token: "{{ token | default('abcdef.1234567890abcdef') }}"
     pod_network_cidr: "{{ pod_network_cidr | default('192.168.0.0/16') }}"
-
   pre_tasks:
     - name: Valider les variables obligatoires
       fail:
-        msg: "La variable 'node_role' doit être 'master' ou 'worker'."
+        msg: "La variable 'k8s_role' doit être 'master' ou 'worker'."
       when: k8s_role not in ["master", "worker"]
-
   roles:
-  - role: kubernetes
-
-pre_tasks:
-  - name: Attendre que les workers rejoignent le cluster
-    become: yes
-    shell: |
-      export KUBECONFIG=/etc/kubernetes/admin.conf
-      until [ $(kubectl get nodes --no-headers | grep -c Ready) -ge 3 ]; do
-        echo "Waiting for workers... $(kubectl get nodes --no-headers | grep -c Ready)/3 Ready"
-        sleep 15
-      done
-    args:
-      executable: /bin/bash
-    environment:
-      KUBECONFIG: /etc/kubernetes/admin.conf
-
+    - role: kubernetes
     - role: monitoring
       when: k8s_role == "master"
