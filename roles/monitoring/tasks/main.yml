@@ -5,7 +5,6 @@
 
 # ==============================
 # ATTENDRE QUE LES WORKERS REJOIGNENT
-# AVANT d'installer le monitoring
 # ==============================
 
 - name: Attendre que les workers rejoignent le cluster (3 nodes Ready)
@@ -71,7 +70,7 @@
 
 # ==============================
 # DEPLOIEMENT KUBE-PROMETHEUS-STACK
-# AVEC SIDECAR DASHBOARDS ACTIVÉ
+# FIX: --set-string pour labelValue
 # ==============================
 
 - name: Déployer kube-prometheus-stack (Grafana NodePort 30000 + Sidecar)
@@ -88,7 +87,7 @@
       --set grafana.adminUser=admin \
       --set grafana.sidecar.dashboards.enabled=true \
       --set grafana.sidecar.dashboards.label=grafana_dashboard \
-      --set grafana.sidecar.dashboards.labelValue="1" \
+      --set-string grafana.sidecar.dashboards.labelValue=1 \
       --set grafana.sidecar.dashboards.searchNamespace=ALL \
       --set kubeEtcd.enabled=false \
       --set kubeControllerManager.enabled=false \
@@ -140,19 +139,11 @@
 
 # ==============================
 # DASHBOARD IA - PREDICTIONS ET ANOMALIES
+# FIX: Créer le fichier AVANT de l'appliquer
 # ==============================
 
-- name: Déployer le Dashboard IA Monitoring
-  become: yes
-  shell: |
-    export KUBECONFIG=/etc/kubernetes/admin.conf
-    kubectl apply -f /tmp/ai-dashboard.yaml
-  args:
-    executable: /bin/bash
-  changed_when: false
-  ignore_errors: yes
-
 - name: Créer le fichier ConfigMap dashboard IA
+  become: yes
   copy:
     dest: /tmp/ai-dashboard.yaml
     mode: '0644'
@@ -250,9 +241,9 @@
                 "type": "timeseries",
                 "datasource": { "type": "prometheus", "uid": "prometheus" },
                 "targets": [
-                  { "expr": "kube_horizontalpodautoscaler_status_current_replicas", "legendFormat": "Current - {{ '{{' }}horizontalpodautoscaler{{ '}}' }}", "refId": "A" },
-                  { "expr": "kube_horizontalpodautoscaler_spec_max_replicas", "legendFormat": "Max - {{ '{{' }}horizontalpodautoscaler{{ '}}' }}", "refId": "B" },
-                  { "expr": "kube_horizontalpodautoscaler_spec_min_replicas", "legendFormat": "Min - {{ '{{' }}horizontalpodautoscaler{{ '}}' }}", "refId": "C" }
+                  { "expr": "kube_horizontalpodautoscaler_status_current_replicas", "legendFormat": "Current - {{horizontalpodautoscaler}}", "refId": "A" },
+                  { "expr": "kube_horizontalpodautoscaler_spec_max_replicas", "legendFormat": "Max - {{horizontalpodautoscaler}}", "refId": "B" },
+                  { "expr": "kube_horizontalpodautoscaler_spec_min_replicas", "legendFormat": "Min - {{horizontalpodautoscaler}}", "refId": "C" }
                 ],
                 "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": true }, "decimals": 0, "min": 0 } },
                 "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
@@ -263,7 +254,7 @@
                 "title": "Restarts Pods Crash Detection",
                 "type": "timeseries",
                 "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total[15m])", "legendFormat": "{{ '{{' }}pod{{ '}}' }} - {{ '{{' }}container{{ '}}' }}", "refId": "A" }],
+                "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total[15m])", "legendFormat": "{{pod}} - {{container}}", "refId": "A" }],
                 "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 15, "spanNulls": true, "thresholdsStyle": {"mode":"line"} }, "decimals": 0, "min": 0, "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":3}] } } },
                 "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
               },
@@ -287,7 +278,6 @@
             "uid": "ai-monitoring-dashboard",
             "version": 1
           }
-  become: yes
 
 - name: Appliquer le dashboard IA
   become: yes
