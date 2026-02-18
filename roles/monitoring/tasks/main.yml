@@ -134,6 +134,45 @@
   changed_when: false
 
 # ==============================
+# PORT-FORWARD AUTOMATIQUE GRAFANA
+# Accessible depuis l'extérieur via port 3000
+# ==============================
+
+- name: Créer service systemd pour port-forward Grafana
+  copy:
+    dest: /etc/systemd/system/grafana-portforward.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Grafana Port Forward - K8s Monitoring
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/bin/kubectl -n monitoring port-forward svc/prometheus-grafana 3000:80 --address 0.0.0.0
+      Restart=always
+      RestartSec=10
+      Environment=KUBECONFIG=/etc/kubernetes/admin.conf
+
+      [Install]
+      WantedBy=multi-user.target
+  become: yes
+
+- name: Activer et démarrer grafana-portforward
+  systemd:
+    name: grafana-portforward
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes
+
+- name: Attendre que le port-forward soit prêt
+  wait_for:
+    host: 0.0.0.0
+    port: 3000
+    timeout: 30
+  become: yes
+
+# ==============================
 # RECUPERER LES INFOS D'ACCES
 # ==============================
 
@@ -184,9 +223,11 @@
       🔐 Grafana login : admin
       🔐 Grafana pass  : {{ grafana_pass.stdout | default('N/A') }}
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      🌐 Accès Grafana (NodePort):
-         http://{{ master_ip_addr.stdout }}:{{ grafana_nodeport.stdout | default('30000') }}
+      🌐 Accès via tunnel SSH depuis le controller:
+         ssh -i ~/.ssh/id_ed25519 ubuntu@<FLOATING_IP> -L 0.0.0.0:3001:localhost:3000 -N &
+         http://192.168.18.10:3001
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       🔎 Vérification:
          kubectl -n monitoring get pods
          kubectl -n monitoring get svc
+         systemctl status grafana-portforward
