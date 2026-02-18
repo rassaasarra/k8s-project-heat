@@ -70,10 +70,9 @@
 
 # ==============================
 # DEPLOIEMENT KUBE-PROMETHEUS-STACK
-# FIX: --set-string pour labelValue
 # ==============================
 
-- name: Déployer kube-prometheus-stack (Grafana NodePort 30000 + Sidecar)
+- name: Déployer kube-prometheus-stack (Grafana NodePort 30000)
   become: yes
   shell: |
     set -e
@@ -138,158 +137,33 @@
   changed_when: false
 
 # ==============================
-# DASHBOARD IA - PREDICTIONS ET ANOMALIES
-# FIX: Créer le fichier AVANT de l'appliquer
+# DASHBOARD IA - FICHIER SEPARE
 # ==============================
 
-- name: Créer le fichier ConfigMap dashboard IA
+- name: Copier le dashboard IA
   become: yes
   copy:
-    dest: /tmp/ai-dashboard.yaml
+    src: ai-dashboard.json
+    dest: /tmp/ai-dashboard.json
     mode: '0644'
-    content: |
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: ai-monitoring-dashboard
-        namespace: monitoring
-        labels:
-          grafana_dashboard: "1"
-      data:
-        ai-monitoring-dashboard.json: |
-          {
-            "annotations": { "list": [] },
-            "editable": true,
-            "graphTooltip": 1,
-            "id": null,
-            "links": [],
-            "panels": [
-              {
-                "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
-                "id": 1,
-                "title": "RECOMMANDATIONS IA - Seuils et Alertes",
-                "type": "text",
-                "options": {
-                  "mode": "markdown",
-                  "content": "## Tableau des Seuils de Monitoring IA\n\n| Metrique | Normal | Attention | Critique | Action |\n|----------|--------|-----------|----------|---------|\n| **CPU** | < 60% | 60-80% | > 80% | Scale horizontalement |\n| **Memoire** | < 70% | 70-85% | > 85% | Augmenter les limites |\n| **Disque** | < 70% | 70-85% | > 85% | Nettoyer les logs |\n| **Z-Score** | < 2 | 2-3 | > 3 | Investiguer immediatement |\n| **Pod Restarts** | 0 | 1-3 | > 3 | Verifier les logs |\n| **HPA** | < max | = max 10min | = max 30min | Augmenter maxReplicas |"
-                }
-              },
-              {
-                "gridPos": { "h": 5, "w": 8, "x": 0, "y": 6 },
-                "id": 2,
-                "title": "PREDICTION CPU +1h",
-                "type": "stat",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "predict_linear(avg(1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[30m:1m], 3600) * 100", "legendFormat": "CPU predit +1h", "refId": "A" }],
-                "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":60},{"color":"red","value":80}] }, "min": 0, "max": 100 } },
-                "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]} }
-              },
-              {
-                "gridPos": { "h": 5, "w": 8, "x": 8, "y": 6 },
-                "id": 3,
-                "title": "PREDICTION DISQUE +24h",
-                "type": "stat",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "predict_linear(avg(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})[1h:5m], 86400) * 100", "legendFormat": "Disque predit +24h", "refId": "A" }],
-                "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":70},{"color":"red","value":85}] }, "min": 0, "max": 100 } },
-                "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]} }
-              },
-              {
-                "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
-                "id": 4,
-                "title": "PREDICTION MEMOIRE +1h",
-                "type": "stat",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "predict_linear(avg(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)[30m:1m], 3600) * 100", "legendFormat": "Memoire predite +1h", "refId": "A" }],
-                "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":70},{"color":"red","value":85}] }, "min": 0, "max": 100 } },
-                "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]} }
-              },
-              {
-                "gridPos": { "h": 5, "w": 8, "x": 0, "y": 11 },
-                "id": 5,
-                "title": "Cluster Health Score",
-                "type": "gauge",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"}) / count(kube_node_info) * 100", "legendFormat": "Health %", "refId": "A" }],
-                "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}] } } },
-                "options": { "reduceOptions": {"calcs": ["lastNotNull"]}, "showThresholdLabels": false, "showThresholdMarkers": true }
-              },
-              {
-                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
-                "id": 8,
-                "title": "Detection Anomalies CPU Z-Score",
-                "type": "timeseries",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "(\n  (1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))\n  - avg_over_time((1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[1h:5m])\n) / stddev_over_time((1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[1h:5m])", "legendFormat": "Z-Score CPU", "refId": "A" }],
-                "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true, "thresholdsStyle": {"mode":"line"} }, "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":2},{"color":"red","value":3}] } } },
-                "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
-              },
-              {
-                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
-                "id": 9,
-                "title": "Detection Anomalies Memoire Z-Score",
-                "type": "timeseries",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "(\n  (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)\n  - avg_over_time((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)[1h:5m])\n) / stddev_over_time((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)[1h:5m])", "legendFormat": "Z-Score Memoire", "refId": "A" }],
-                "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true, "thresholdsStyle": {"mode":"line"} }, "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":2},{"color":"red","value":3}] } } },
-                "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
-              },
-              {
-                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
-                "id": 10,
-                "title": "HPA Autoscaling Replicas",
-                "type": "timeseries",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [
-                  { "expr": "kube_horizontalpodautoscaler_status_current_replicas", "legendFormat": "Current - {{horizontalpodautoscaler}}", "refId": "A" },
-                  { "expr": "kube_horizontalpodautoscaler_spec_max_replicas", "legendFormat": "Max - {{horizontalpodautoscaler}}", "refId": "B" },
-                  { "expr": "kube_horizontalpodautoscaler_spec_min_replicas", "legendFormat": "Min - {{horizontalpodautoscaler}}", "refId": "C" }
-                ],
-                "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": true }, "decimals": 0, "min": 0 } },
-                "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
-              },
-              {
-                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
-                "id": 11,
-                "title": "Restarts Pods Crash Detection",
-                "type": "timeseries",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total[15m])", "legendFormat": "{{pod}} - {{container}}", "refId": "A" }],
-                "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 15, "spanNulls": true, "thresholdsStyle": {"mode":"line"} }, "decimals": 0, "min": 0, "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":3}] } } },
-                "options": { "tooltip": {"mode":"multi"}, "legend": {"displayMode":"table","placement":"bottom"} }
-              },
-              {
-                "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 },
-                "id": 12,
-                "title": "Alertes Actives",
-                "type": "table",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "targets": [{ "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true, "refId": "A" }],
-                "fieldConfig": { "defaults": {} },
-                "options": { "showHeader": true }
-              }
-            ],
-            "refresh": "30s",
-            "schemaVersion": 38,
-            "style": "dark",
-            "tags": ["ai", "monitoring", "prediction", "anomaly-detection"],
-            "time": { "from": "now-3h", "to": "now" },
-            "title": "AI Monitoring - Predictions et Anomalies",
-            "uid": "ai-monitoring-dashboard",
-            "version": 1
-          }
 
-- name: Appliquer le dashboard IA
+- name: Créer le ConfigMap dashboard IA
   become: yes
   shell: |
-    export KUBECONFIG=/etc/kubernetes/admin.conf
-    kubectl apply -f /tmp/ai-dashboard.yaml
+    kubectl create configmap ai-monitoring-dashboard \
+      --from-file=ai-monitoring-dashboard.json=/tmp/ai-dashboard.json \
+      --namespace monitoring \
+      --dry-run=client -o yaml | kubectl apply -f -
+    kubectl label configmap ai-monitoring-dashboard \
+      -n monitoring grafana_dashboard=1 --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   args:
     executable: /bin/bash
   changed_when: false
   ignore_errors: yes
 
-- name: Confirmer le dashboard IA déployé
+- name: Confirmer le dashboard IA
   debug:
     msg: "✅ Dashboard IA déployé ! Grafana → Dashboards → AI Monitoring - Predictions et Anomalies"
 
