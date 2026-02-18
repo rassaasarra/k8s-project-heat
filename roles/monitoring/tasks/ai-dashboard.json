@@ -1,0 +1,356 @@
+{
+  "title": "AI Monitoring - Predictions et Anomalies",
+  "uid": "ai-monitoring-dashboard",
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["ai", "monitoring", "prediction", "anomaly-detection"],
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "version": 1,
+  "panels": [
+    {
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "RECOMMANDATIONS IA - Seuils et Alertes",
+      "type": "text",
+      "options": {
+        "mode": "markdown",
+        "content": "## Tableau des Seuils de Monitoring IA\n\n| Metrique | Normal (Vert) | Attention (Jaune) | Critique (Rouge) | Action Recommandee |\n|----------|---------------|-------------------|------------------|--------------------|\n| **CPU** | < 60% | 60-80% | > 80% | Scale horizontalement si > 80% pendant 5min |\n| **Memoire** | < 70% | 70-85% | > 85% | Augmenter les limites ou ajouter des nodes |\n| **Disque** | < 70% | 70-85% | > 85% | Nettoyer les logs ou etendre le stockage |\n| **Z-Score** | < 2 | 2-3 | > 3 | Investiguer immediatement si > 3 |\n| **Pod Restarts** | 0 | 1-3 | > 3 | Verifier les logs du pod et les ressources |\n| **HPA** | < max | = max (10min) | = max (30min) | Augmenter maxReplicas |"
+      }
+    },
+    {
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 6 },
+      "id": 2,
+      "title": "PREDICTION CPU +1h",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "predict_linear(avg(1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[30m:1m], 3600) * 100",
+          "legendFormat": "CPU predit +1h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 6 },
+      "id": 3,
+      "title": "PREDICTION DISQUE +24h",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "predict_linear(avg(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})[1h:5m], 86400) * 100",
+          "legendFormat": "Disque predit +24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 85 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
+      "id": 4,
+      "title": "PREDICTION MEMOIRE +1h",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "predict_linear(avg(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)[30m:1m], 3600) * 100",
+          "legendFormat": "Memoire predite +1h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 85 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 11 },
+      "id": 5,
+      "title": "Cluster Health Score",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"}) / count(kube_node_info) * 100",
+          "legendFormat": "Health %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 80 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 11 },
+      "id": 7,
+      "title": "CPU Actuel vs Predit +1h",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "(1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100",
+          "legendFormat": "CPU actuel",
+          "refId": "A"
+        },
+        {
+          "expr": "predict_linear((1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[30m:1m], 3600) * 100",
+          "legendFormat": "CPU predit +1h",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 8,
+      "title": "Detection Anomalies CPU Z-Score",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "((1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) - avg_over_time((1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[1h:5m])) / stddev_over_time((1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))[1h:5m])",
+          "legendFormat": "Z-Score CPU",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 9,
+      "title": "Detection Anomalies Memoire Z-Score",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) - avg_over_time((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)[1h:5m])) / stddev_over_time((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)[1h:5m])",
+          "legendFormat": "Z-Score Memoire",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "id": 10,
+      "title": "HPA Autoscaling Replicas",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "kube_horizontalpodautoscaler_status_current_replicas",
+          "legendFormat": "Current - {{horizontalpodautoscaler}}",
+          "refId": "A"
+        },
+        {
+          "expr": "kube_horizontalpodautoscaler_spec_max_replicas",
+          "legendFormat": "Max - {{horizontalpodautoscaler}}",
+          "refId": "B"
+        },
+        {
+          "expr": "kube_horizontalpodautoscaler_spec_min_replicas",
+          "legendFormat": "Min - {{horizontalpodautoscaler}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": true },
+          "decimals": 0,
+          "min": 0
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "id": 11,
+      "title": "Restarts Pods Crash Detection",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "increase(kube_pod_container_status_restarts_total[15m])",
+          "legendFormat": "{{pod}} - {{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "decimals": 0,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 },
+      "id": 12,
+      "title": "Alertes Actives",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": {} },
+      "options": { "showHeader": true }
+    }
+  ]
+}
