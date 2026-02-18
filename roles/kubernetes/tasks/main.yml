@@ -161,20 +161,7 @@
     creates: /etc/kubernetes/admin.conf
   when: k8s_role == "master"
   become: yes
-- name: Create .kube directory for ubuntu user
-  file:
-    path: /home/ubuntu/.kube
-    owner: ubuntu
-    group: ubuntu
-    mode: '0700'
 
-- name: Copy admin.conf to ubuntu user
-  copy:
-    src: /etc/kubernetes/admin.conf
-    dest: /home/ubuntu/.kube/config
-    owner: ubuntu
-    group: ubuntu
-    mode: '0600'
 - name: Setup kubeconfig for root
   when: k8s_role == "master"
   become: yes
@@ -191,6 +178,23 @@
         dest: /root/.kube/config
         remote_src: yes
         mode: '0600'
+
+# ==============================
+# KUBECONFIG POUR USER UBUNTU
+# FIX : "connection to localhost:8080 refused"
+# ==============================
+
+- name: Setup kubeconfig for ubuntu user
+  shell: |
+    mkdir -p /home/ubuntu/.kube
+    cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+    chown -R ubuntu:ubuntu /home/ubuntu/.kube
+    chmod 700 /home/ubuntu/.kube
+    chmod 600 /home/ubuntu/.kube/config
+  args:
+    executable: /bin/bash
+  when: k8s_role == "master"
+  become: yes
 
 # ==============================
 # REMOVE FLANNEL (if exists) - NON BLOQUANT
