@@ -317,3 +317,37 @@
     status_code: 200
   when: k8s_role == "master"
   become: yes
+
+  
+- name: Install git
+  apt:
+    name: git
+    state: present
+    update_cache: yes
+  when: k8s_role == "master"
+  become: yes
+
+- name: Clone application repository
+  git:
+    repo: "https://github.com/rassaasarra/k8s-project-heat.git"
+    dest: /home/ubuntu/k8s-project-heat
+    version: main
+    force: yes
+  when: k8s_role == "master"
+  become: yes
+
+- name: Fix ownership of repository
+  file:
+    path: /home/ubuntu/k8s-project-heat
+    owner: ubuntu
+    group: ubuntu
+    recurse: yes
+  when: k8s_role == "master"
+  become: yes
+
+- name: Deploy frontend manifests
+  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/
+  when: k8s_role == "master"
+  become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
