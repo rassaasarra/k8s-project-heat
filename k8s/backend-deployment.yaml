@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
+  name: mono-backend
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: backend
+      app: mono-backend
   template:
     metadata:
       labels:
-        app: backend
+        app: mono-backend
     spec:
       containers:
-        - name: backend
-          image: raniaat12/backend:latest
+        - name: mono-backend
+          image: raniaat12/mono-backend:latest
           ports:
             - containerPort: 8080
