@@ -389,6 +389,64 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
 
 # ==============================
+# INSTALL NGROK
+# ==============================
+
+- name: Download ngrok
+  get_url:
+    url: https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+    dest: /tmp/ngrok.tgz
+  when: k8s_role == "master"
+  become: yes
+
+- name: Extract ngrok
+  unarchive:
+    src: /tmp/ngrok.tgz
+    dest: /usr/local/bin/
+    remote_src: yes
+    mode: '0755'
+  when: k8s_role == "master"
+  become: yes
+
+- name: Configure ngrok token
+  shell: |
+    ngrok config add-authtoken 3DX677NOeQhEnGdK5egbkO4IdCy_2qTse2kwcfrsisKDarRpA
+  when: k8s_role == "master"
+  become: yes
+
+# ==============================
+# START NGROK FRONTEND TUNNEL
+# ==============================
+
+- name: Create ngrok systemd service
+  copy:
+    dest: /etc/systemd/system/ngrok-frontend.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Ngrok Frontend Tunnel
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/local/bin/ngrok http 10.8.50.240:80
+      Restart=always
+      RestartSec=5
+      User=root
+
+      [Install]
+      WantedBy=multi-user.target
+  when: k8s_role == "master"
+  become: yes
+
+- name: Enable and start ngrok frontend
+  systemd:
+    name: ngrok-frontend
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  when: k8s_role == "master"
+  become: yes
+# ==============================
 
 - name: Deploy frontend manifests
   command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/
