@@ -1,0 +1,30 @@
+---
+- name: Install MetalLB
+  shell: |
+    kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+
+- name: Wait for MetalLB
+  pause:
+    seconds: 30
+
+- name: Create MetalLB config
+  copy:
+    dest: /tmp/metallb-config.yaml
+    content: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: default-pool
+        namespace: metallb-system
+      spec:
+        addresses:
+          - 10.8.50.240-10.8.50.250
+      ---
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: default
+        namespace: metallb-system
+
+- name: Apply MetalLB config
+  shell: kubectl apply -f /tmp/metallb-config.yaml
