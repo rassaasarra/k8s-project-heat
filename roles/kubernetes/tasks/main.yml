@@ -353,24 +353,20 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
 
 
-    # ==============================
-# DEPLOY FLASK (PREMIER DEPLOIEMENT)
-# Le CI/CD gère les suivants
+# ==============================
+# Create Flask Secrets
 # ==============================
 
-- name: Apply flask deployment
-  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/flask-deployment.yaml
-  when: k8s_role == "master"
-  become: yes
+- name: Create Flask secret
+  shell: |
+    kubectl create secret generic flask-secrets \
+    --from-literal=GROQ_API_KEY="{{ groq_api_key }}" \
+    --dry-run=client -o yaml | kubectl apply -f -
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
-
-- name: Apply flask service
-  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/flask-service.yaml
   when: k8s_role == "master"
   become: yes
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
+  
 # ==============================
 # INSTALL METALLB
 # ==============================
