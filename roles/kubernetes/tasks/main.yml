@@ -355,10 +355,15 @@
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
 
-- name: Wait for MetalLB
-  pause:
-    seconds: 30
+- name: Wait for MetalLB controller
+  shell: |
+    kubectl wait --namespace metallb-system \
+    --for=condition=available deployment/controller \
+    --timeout=180s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   when: k8s_role == "master"
+  become: yes
 
 - name: Create MetalLB config
   copy:
