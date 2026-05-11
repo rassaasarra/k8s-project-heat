@@ -345,6 +345,12 @@
   when: k8s_role == "master"
   become: yes
 
+- name: Deploy frontend manifests
+  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/
+  when: k8s_role == "master"
+  become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
 # ==============================
 # INSTALL METALLB
 # ==============================
@@ -453,9 +459,3 @@
   become: yes
 # ==============================
 
-- name: Deploy frontend manifests
-  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/
-  when: k8s_role == "master"
-  become: yes
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
