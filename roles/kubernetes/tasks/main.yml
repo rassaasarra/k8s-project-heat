@@ -351,6 +351,26 @@
   become: yes
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
+
+
+    # ==============================
+# DEPLOY FLASK (PREMIER DEPLOIEMENT)
+# Le CI/CD gère les suivants
+# ==============================
+
+- name: Apply flask deployment
+  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/flask-deployment.yaml
+  when: k8s_role == "master"
+  become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Apply flask service
+  command: kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/flask-service.yaml
+  when: k8s_role == "master"
+  become: yes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
 # ==============================
 # INSTALL METALLB
 # ==============================
@@ -424,6 +444,7 @@
     ngrok config add-authtoken 3DX677NOeQhEnGdK5egbkO4IdCy_2qTse2kwcfrsisKDarRpA
   when: k8s_role == "master"
   become: yes
+  
 
 # ==============================
 # START NGROK FRONTEND TUNNEL
