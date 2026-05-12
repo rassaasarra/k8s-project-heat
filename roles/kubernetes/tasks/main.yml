@@ -469,7 +469,7 @@
       After=network.target
 
       [Service]
-      ExecStart=/usr/local/bin/ngrok http 10.8.50.240:80
+      ExecStart=/usr/local/bin/ngrok http 30080
       Restart=always
       RestartSec=5
       User=root
