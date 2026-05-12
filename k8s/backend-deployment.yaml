@@ -15,5 +15,6 @@ spec:
       containers:
         - name: mono-backend
           image: raniaat12/mono-backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
