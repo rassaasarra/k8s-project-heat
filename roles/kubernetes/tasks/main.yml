@@ -378,7 +378,7 @@
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: k8s_role == "master"
-  become: yess
+  become: yes
   
 # ==============================
 # INSTALL METALLB
