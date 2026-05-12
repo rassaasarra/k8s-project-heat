@@ -354,13 +354,14 @@
 
 
 # ==============================
-# Create Flask Secrets
+# GESTION AUTOMATISÉE DES SECRETS
 # ==============================
 
-- name: Create Flask secret
+- name: Créer ou mettre à jour le secret Flask
   shell: |
     kubectl create secret generic flask-secrets \
     --from-literal=GROQ_API_KEY="{{ groq_api_key }}" \
+    --from-literal=RESEND_API_KEY="{{ resend_api_key }}" \
     --dry-run=client -o yaml | kubectl apply -f -
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
