@@ -5,7 +5,7 @@ metadata:
 spec:
   selector:
     app: flask-api
-  type: ClusterIP
+  type: LoadBalancer # <--- Indispensable pour MetalLB
   ports:
-    - port: 5000
-      targetPort: 5000
+    - port: 80         # Port exposé à l'extérieur
+      targetPort: 5000 # Port interne de ton container Flask
