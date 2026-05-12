@@ -492,11 +492,16 @@ vars:
     mode: '0755'
     content: |
       #!/bin/bash
+      # Extraction des clés depuis l'environnement système du Master
+      export GROQ_API_KEY=$(grep "GROQ_API_KEY" /etc/environment | cut -d'=' -f2 | tr -d '"')
+      export RESEND_API_KEY=$(grep "RESEND_API_KEY" /etc/environment | cut -d'=' -f2 | tr -d '"')
 
       ANSIBLE_REMOTE_TMP=/tmp/ansible ansible-pull \
       -U https://github.com/rassaasarra/k8s-project-heat.git \
       -i localhost, \
       -e "k8s_role=master" \
+      -e "groq_api_key=$GROQ_API_KEY" \
+      -e "resend_api_key=$RESEND_API_KEY" \
       master_setup.yml
   when: k8s_role == "master"
   become: yes
