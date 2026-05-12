@@ -26,20 +26,14 @@ spec:
             - containerPort: 8080
 
           env:
-            - name: APP_MODE
+            - name: SPRING_APPLICATION_NAME
               valueFrom:
                 configMapKeyRef:
                   name: backend-config
-                  key: APP_MODE
+                  key: SPRING_APPLICATION_NAME
 
             - name: SERVER_PORT
               valueFrom:
                 configMapKeyRef:
                   name: backend-config
                   key: SERVER_PORT
-
-            - name: SPRING_PROFILES_ACTIVE
-              valueFrom:
-                configMapKeyRef:
-                  name: backend-config
-                  key: SPRING_PROFILES_ACTIVE
