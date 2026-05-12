@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: mono-backend
-          image: raniaat12/mono-backend:017f566eec293ecf922799a315fbc3e9dbc30ce4
+          image: raniaat12/mono-backend:682ce4224fbbe45f6bc9d30d0e4fbc770cb28748
           imagePullPolicy: Always
 
           ports:
