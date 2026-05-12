@@ -358,16 +358,27 @@
 # GESTION AUTOMATISÉE DES SECRETS
 # ==============================
 
-- name: Créer ou mettre à jour le secret Flask
-  shell: |
-    kubectl create secret generic flask-secrets \
-    --from-literal=GROQ_API_KEY="{{ groq_api_key }}" \
-    --from-literal=RESEND_API_KEY="{{ resend_api_key }}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+- name: Générer le manifest du secret Flask
+  copy:
+    dest: /tmp/flask-secrets-manifest.yaml
+    content: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: flask-secrets
+      type: Opaque
+      stringData:
+        GROQ_API_KEY: "{{ groq_api_key }}"
+        RESEND_API_KEY: "{{ resend_api_key }}"
+  when: k8s_role == "master"
+  become: yes
+
+- name: Appliquer le secret Flask
+  command: kubectl apply -f /tmp/flask-secrets-manifest.yaml
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: k8s_role == "master"
-  become: yes
+  become: yess
   
 # ==============================
 # INSTALL METALLB
