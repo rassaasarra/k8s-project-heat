@@ -1,10 +1,5 @@
 ---
-# ==============================
-# VARIABLES PAR DÉFAUT
-# ==============================
-vars:
-  groq_api_key: "{{ lookup('env', 'GROQ_API_KEY') | default('votre_cle_par_defaut', true) }}"
-  resend_api_key: "{{ lookup('env', 'RESEND_API_KEY') | default('votre_cle_par_defaut', true) }}"
+
 # ==============================
 # FIX APT LOCK (unattended-upgrades)
 # ==============================
