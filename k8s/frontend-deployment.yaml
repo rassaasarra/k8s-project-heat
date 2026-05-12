@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: raniaat12/front:f06631a54ffec970fa21c3e7380cf8f0c126bdae
+          image: raniaat12/front:f0cec76a1c7e71e0ccad0e91491e200379b0b1d6
           imagePullPolicy: Always
           ports:
             - containerPort: 80
