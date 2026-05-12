@@ -15,5 +15,6 @@ spec:
       containers:
         - name: frontend
           image: raniaat12/front:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
