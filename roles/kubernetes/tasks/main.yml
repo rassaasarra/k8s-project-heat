@@ -475,4 +475,29 @@
   when: k8s_role == "master"
   become: yes
 # ==============================
+# ==============================
+# AUTO CD WITH ANSIBLE-PULL
+# ==============================
 
+- name: Create auto update script
+  copy:
+    dest: /usr/local/bin/update-cluster.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+
+      ANSIBLE_REMOTE_TMP=/tmp/ansible ansible-pull \
+      -U https://github.com/rassaasarra/k8s-project-heat.git \
+      -i localhost, \
+      -e "k8s_role=master" \
+      master_setup.yml
+  when: k8s_role == "master"
+  become: yes
+
+- name: Add auto update cron
+  cron:
+    name: "Auto update Kubernetes cluster"
+    minute: "*/5"
+    job: "/usr/local/bin/update-cluster.sh >> /var/log/ansible-pull.log 2>&1"
+  when: k8s_role == "master"
+  become: yes
