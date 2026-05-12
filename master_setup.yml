@@ -17,3 +17,8 @@
     - role: kubernetes
     - role: monitoring
       when: k8s_role == "master"
+      
+- name: Apply Kubernetes Manifests
+  shell: |
+    kubectl apply -f /root/.ansible/pull/k8s-project-heat/k8s/
+  when: k8s_role == "master"
