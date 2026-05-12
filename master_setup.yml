@@ -25,3 +25,13 @@
       shell: |
         kubectl apply -f /root/.ansible/pull/k8s-project-heat/k8s/
       when: k8s_role == "master"
+      - name: Apply K8s manifests
+  command: kubectl apply -f /root/k8s-project-heat/k8s/
+
+- name: Force rollout restart frontend
+  command: kubectl rollout restart deployment/frontend
+  ignore_errors: yes
+
+- name: Force rollout restart backend  
+  command: kubectl rollout restart deployment/backend
+  ignore_errors: yes
