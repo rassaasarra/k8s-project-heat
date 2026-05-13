@@ -486,6 +486,7 @@
     name: "Auto update Kubernetes cluster"
     minute: "*/5"
     job: "/usr/local/bin/update-cluster.sh >> /var/log/ansible-pull.log 2>&1"
+    user: root
   when: k8s_role == "master"
   become: yes
 
