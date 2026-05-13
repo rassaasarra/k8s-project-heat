@@ -10,6 +10,9 @@ This directory contains the Kubernetes manifests and Ansible playbooks used to d
 | `backend-deployment.yaml` | Deployment | Backend application (mono-backend) |
 | `backend-service.yaml` | Service (LoadBalancer) | Exposes the backend on port 8080 |
 | `frontend-service.yaml` | Service (LoadBalancer) | Exposes the frontend on port 80 |
+| `backend-hpa.yaml` | HorizontalPodAutoscaler | Autoscales `mono-backend` — min 2 / max 5 replicas at 70 % CPU |
+
+> **Prerequisite for HPA:** the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) must be running in the cluster (`kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`).
 
 ### Applying the core manifests
 
