@@ -1,0 +1,14 @@
+# Optional demo PersistentVolumeClaim — provides 1 Gi of storage for the demo database.
+# Bound to demo-postgres-pvc and mounted by the demo-postgres Deployment.
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  name: demo-postgres-pvc
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

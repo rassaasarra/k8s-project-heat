@@ -1,0 +1,15 @@
+# Optional demo database service — exposes demo-postgres pods cluster-internally.
+# This service is NOT used by the current backend application.
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: demo-postgres-service
+
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
