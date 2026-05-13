@@ -7,29 +7,24 @@
     master_ip: "{{ master_ip | default('') }}"
     token: "{{ token | default('abcdef.1234567890abcdef') }}"
     pod_network_cidr: "{{ pod_network_cidr | default('192.168.0.0/16') }}"
-
   pre_tasks:
     - name: Valider les variables obligatoires
       fail:
         msg: "La variable 'k8s_role' doit être 'master' ou 'worker'."
       when: k8s_role not in ["master", "worker"]
-
   roles:
     - role: kubernetes
     - role: monitoring
       when: k8s_role == "master"
-
   tasks:
     - name: Apply Kubernetes Manifests
       shell: |
-        kubectl apply -f /root/.ansible/pull/k8s-project-heat/k8s/
+        kubectl apply -f /home/ubuntu/k8s-project-heat/k8s/
       when: k8s_role == "master"
-
     - name: Force rollout restart frontend
       command: kubectl rollout restart deployment/frontend
       when: k8s_role == "master"
       ignore_errors: yes
-
     - name: Force rollout restart backend
       command: kubectl rollout restart deployment/backend
       when: k8s_role == "master"
