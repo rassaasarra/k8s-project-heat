@@ -354,32 +354,7 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
 
 
-# ==============================
-# GESTION AUTOMATISÉE DES SECRETS
-# ==============================
 
-- name: Générer le manifest du secret Flask
-  copy:
-    dest: /tmp/flask-secrets-manifest.yaml
-    content: |
-      apiVersion: v1
-      kind: Secret
-      metadata:
-        name: flask-secrets
-      type: Opaque
-      stringData:
-        GROQ_API_KEY: "{{ groq_api_key }}"
-        RESEND_API_KEY: "{{ resend_api_key }}"
-  when: k8s_role == "master"
-  become: yes
-
-- name: Appliquer le secret Flask
-  command: kubectl apply -f /tmp/flask-secrets-manifest.yaml
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-  when: k8s_role == "master"
-  become: yes
-  
 # ==============================
 # INSTALL METALLB
 # ==============================
@@ -498,16 +473,10 @@
     mode: '0755'
     content: |
       #!/bin/bash
-      # Extraction des clés depuis l'environnement système du Master
-      export GROQ_API_KEY=$(grep "GROQ_API_KEY" /etc/environment | cut -d'=' -f2 | tr -d '"')
-      export RESEND_API_KEY=$(grep "RESEND_API_KEY" /etc/environment | cut -d'=' -f2 | tr -d '"')
-
       ANSIBLE_REMOTE_TMP=/tmp/ansible ansible-pull \
       -U https://github.com/rassaasarra/k8s-project-heat.git \
       -i localhost, \
       -e "k8s_role=master" \
-      -e "groq_api_key=$GROQ_API_KEY" \
-      -e "resend_api_key=$RESEND_API_KEY" \
       master_setup.yml
   when: k8s_role == "master"
   become: yes
@@ -519,3 +488,5 @@
     job: "/usr/local/bin/update-cluster.sh >> /var/log/ansible-pull.log 2>&1"
   when: k8s_role == "master"
   become: yes
+
+
